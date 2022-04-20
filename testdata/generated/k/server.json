@@ -1,0 +1,25 @@
+{
+  "HTTP": 80,
+  "HTTPS": 443,
+  "LetsEncryptEmail": "your.email@localhost",
+  "LetsEncryptCachePath": "/var/cache/k-http/autocert-cache",
+  "Routes": [
+    {
+      "Patterns": [
+        "/",
+        "example.com/"
+      ],
+      "Target": "/var/www",
+      "BasicAuth": {
+        "User": "",
+        "Password": "",
+        "Realm": ""
+      },
+      "LogFormat": "",
+      "LogFields": {
+        "K": "example_app"
+      },
+      "ErrPaths": null
+    }
+  ]
+}

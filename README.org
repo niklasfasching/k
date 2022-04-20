@@ -1,5 +1,85 @@
 * k
-heroku like git deployment with systemd
+heroku like git based deployment. with https server. and systemd.
+
+- deployment is handled via git push + a git.update hook on the server running =<app>.Build=
+- services and logs are handled by systemd
+- http(s) server using letsencrypt autocert
+- secrets are encrypted using nacl/secretbox
+
+For more, check out the [[https://github.com/niklasfasching/k/tree/master/testdata/config][example config]] and the [[https://github.com/niklasfasching/k/tree/master/testdata/generated][generated output]]
+
+#+begin_src bash
+$ k init server
+Inited k in ./server
+Please enter a password:
+Enter password again:
+
+$ k deploy example
+Copying k binary to server...
+Pushing server:
+Total 0 (delta 0), reused 0 (delta 0), pack-reused 0
+remote: + git switch --detach a3abc8e1b0f3844934ef80af8233a3d2aa4388d8
+remote: HEAD is now at a3abc8e encrypted value
+remote: + /opt/k/.k generate /run/k
+remote: + systemctl daemon-reload
+To ssh://localhost:/receive//opt/k/.config
+ * [new branch]      master -> 1650494726
+Pushing blog:
+Total 0 (delta 0), reused 0 (delta 0), pack-reused 0
+remote: + git switch --detach 7213da913e68c6ade44f00aca0503299407f3b81
+remote: HEAD is now at 7213da9 drafty
+remote: + PATH=/root/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin
+remote: + echo Hello world
+remote: + systemctl daemon-reload
+remote: + systemctl restart k-http.target example.target
+To ssh://localhost:/receive//opt/k/example
+ * [new branch]      master -> 1650494727
+
+$ k logs example
+-- Logs begin at Tue 2022-04-19 20:56:36 CEST, end at Thu 2022-04-21 00:47:04 CEST. --
+[...]
+
+$ k status k
+● k.target
+     Loaded: loaded (/run/systemd/generator/k.target; generated)
+     Active: active since Thu 2022-04-21 00:45:28 CEST; 2min 13s ago
+
+Apr 21 00:45:28 localhost systemd[1]: Reached target k.target.
+
+● example.target
+     Loaded: loaded (/run/systemd/generator/example.target; generated)
+     Active: active since Thu 2022-04-21 00:45:28 CEST; 2min 13s ago
+
+Apr 21 00:45:28 localhost systemd[1]: Reached target example.target.
+
+● k-http.target
+     Loaded: loaded (/run/systemd/generator/k-http.target; generated)
+     Active: active since Thu 2022-04-21 00:45:28 CEST; 2min 13s ago
+
+Apr 21 00:45:28 localhost systemd[1]: Reached target k-http.target.
+
+● k-https.socket
+     Loaded: loaded (/run/systemd/generator/k-https.socket; generated)
+     Active: active (running) since Thu 2022-04-21 00:45:28 CEST; 2min 13s ago
+   Triggers: ● k-http.service
+     Listen: [::]:443 (Stream)
+      Tasks: 0 (limit: 2274)
+     Memory: 0B
+     CGroup: /system.slice/k-https.socket
+
+Apr 21 00:45:28 localhost systemd[1]: Listening on k-https.socket.
+
+● k-http.socket
+     Loaded: loaded (/run/systemd/generator/k-http.socket; generated)
+     Active: active (running) since Thu 2022-04-21 00:45:28 CEST; 2min 13s ago
+   Triggers: ● k-http.service
+     Listen: [::]:80 (Stream)
+      Tasks: 0 (limit: 2274)
+     Memory: 28.0K
+     CGroup: /system.slice/k-http.socket
+
+#+end_src
+
 * next
 - encryption uses a hardcoded salt for the key derivation. figure out whether that's safe for real
 - bash completion

@@ -1,0 +1,6 @@
+Build: "echo I run on git push"
+Routes:
+  - Patterns:
+      - "/" # global path
+      - "example.com/" # or domain + path
+    Target: "/var/www" # or an address - e.g. localhost:8000
