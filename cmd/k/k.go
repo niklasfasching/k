@@ -17,22 +17,21 @@ import (
 )
 
 var api = cli.API{
-	"ls":       {F: ls, Desc: "list apps"},
-	"start":    {F: systemctl},
-	"stop":     {F: systemctl},
-	"reload":   {F: systemctl},
-	"restart":  {F: systemctl},
+	"ls":       {F: ls, Desc: "list all apps"},
+	"start":    {F: systemctl, Desc: "systemctl start"},
+	"stop":     {F: systemctl, Desc: "systemctl stop"},
+	"reload":   {F: systemctl, Desc: "systemctl reload"},
+	"restart":  {F: systemctl, Desc: "systemctl restart"},
 	"status":   {F: systemctl, Desc: `show status of app - equivalent to systemctl status`},
-	"logs":     {F: systemctl},
+	"logs":     {F: systemctl, Desc: "journalctl K=<app>"},
 	"version":  {F: version},
-	"init":     {F: initConfig},
-	"deploy":   {F: deploy},
-	"generate": {F: generate},
-	"encrypt":  {F: encrypt},
-	"decrypt":  {F: decrypt},
-	"receive":  {F: receive, Doc: "-"},
-	"update":   {F: update, Doc: "-"},
-	"serve":    {F: serve, Doc: "-"},
+	"init":     {F: initConfig, Desc: "set up the provided config <dir>"},
+	"deploy":   {F: deploy, Desc: "git push config & app repo's"},
+	"encrypt":  {F: encrypt, Desc: "encrypt the provided <value>"},
+	"generate": {F: generate, Desc: "-"},
+	"receive":  {F: receive, Desc: "-"},
+	"update":   {F: update, Desc: "-"},
+	"serve":    {F: serve, Desc: "-"},
 }
 
 var serverRoot = "/opt/k/"
@@ -79,90 +78,6 @@ func encrypt(cmd string, args struct{ PlainText string }) error {
 	return nil
 }
 
-func decrypt(cmd string, args struct{ CipherText string }) error {
-	v, err := util.OpenVault(filepath.Join(root, keyFile), true)
-	if err != nil {
-		return err
-	}
-	s, err := v.Decrypt(args.CipherText)
-	if err != nil {
-		return err
-	}
-	log.Println(s)
-	return nil
-}
-
-func update(cmd string, x struct{ Ref, OldSHA, NewSHA string }) error {
-	script := ""
-	if dir, err := os.Getwd(); err != nil {
-		return err
-	} else if exe, err := os.Executable(); err != nil {
-		return err
-	} else if name := filepath.Base(filepath.Dir(dir)); name == configDir {
-		script = fmt.Sprintf(`%s generate /run/k && systemctl daemon-reload`, exe)
-	} else {
-		c, err := loadConfig()
-		if err != nil {
-			return err
-		}
-		a, ok := c.Apps[name]
-		if !ok {
-			return fmt.Errorf("app '%s' does not exist", name)
-		}
-		script = fmt.Sprintf(`
-          %s
-          systemctl daemon-reload
-          systemctl restart k-http.target %s.target`, a.Build, name)
-	}
-	// hook executes inside .git/ and hardcodes 'GIT_DIR=.'; we have to unset it when cd'ing
-	// git hooks don't source /etc/environment by themselves
-	script = fmt.Sprintf(`
-      unset GIT_DIR
-      . /etc/environment
-      cd ..
-      set -x
-      git switch --detach $id
-      %s`, script)
-
-	if _, err := util.Exec(script, map[string]string{"id": x.NewSHA}, false); err == nil {
-		return nil
-	} else if err != nil && x.OldSHA == "0000000000000000000000000000000000000000" {
-		return err
-	}
-	_, err := util.Exec(script, map[string]string{"id": x.OldSHA}, false)
-	return err
-}
-
-func receive(cmd string, x struct{ Dir string }) error {
-	if _, err := util.Exec(`git init --quiet "$dir"
-                            cd "$dir"
-                            git config receive.denyCurrentBranch updateInstead
-	                        ln --symbolic --force "$k" "$dir/.git/hooks/update"`,
-		map[string]string{"dir": x.Dir, "k": os.Args[0]}, false); err != nil {
-		return err
-	}
-	exe, err := ex.LookPath("git-receive-pack")
-	if err != nil {
-		return err
-	}
-	return syscall.Exec(exe, []string{exe, x.Dir}, os.Environ())
-}
-
-func generate(cmd string, x struct {
-	Dir               string
-	EarlyDir, LateDir string `cli:"::"`
-}) error {
-	c, err := loadConfig()
-	if err != nil {
-		return err
-	}
-	return c.Render(x.Dir)
-}
-
-func serve(cmd string, x struct{ ConfigPath string }) error {
-	return server.Start(x.ConfigPath)
-}
-
 func deploy(cmd string,
 	as struct {
 		App string `cli:"::"`
@@ -182,7 +97,6 @@ func deploy(cmd string,
 	}
 	if app := c.Apps[name]; app == nil {
 		return fmt.Errorf("'%s' is not a valid app", name)
-
 	}
 	if s, err := util.SSH(c.User, c.Host); err != nil {
 		return err
@@ -282,4 +196,74 @@ func ls(cmd string) error {
 		log.Println("\t- " + a)
 	}
 	return nil
+}
+
+func update(cmd string, x struct{ Ref, OldSHA, NewSHA string }) error {
+	script := ""
+	if dir, err := os.Getwd(); err != nil {
+		return err
+	} else if exe, err := os.Executable(); err != nil {
+		return err
+	} else if name := filepath.Base(filepath.Dir(dir)); name == configDir {
+		script = fmt.Sprintf(`%s generate /run/k && systemctl daemon-reload`, exe)
+	} else {
+		c, err := loadConfig()
+		if err != nil {
+			return err
+		}
+		a, ok := c.Apps[name]
+		if !ok {
+			return fmt.Errorf("app '%s' does not exist", name)
+		}
+		script = fmt.Sprintf(`
+          %s
+          systemctl daemon-reload
+          systemctl restart k-http.target %s.target`, a.Build, name)
+	}
+	// hook executes inside .git/ and hardcodes 'GIT_DIR=.'; we have to unset it when cd'ing
+	// git hooks don't source /etc/environment by themselves
+	script = fmt.Sprintf(`
+      unset GIT_DIR
+      . /etc/environment
+      cd ..
+      set -x
+      git switch --detach $id
+      %s`, script)
+	if _, err := util.Exec(script, map[string]string{"id": x.NewSHA}, false); err == nil {
+		return nil
+	} else if err != nil && x.OldSHA == "0000000000000000000000000000000000000000" {
+		return err
+	}
+	_, err := util.Exec(script, map[string]string{"id": x.OldSHA}, false)
+	return err
+}
+
+func receive(cmd string, x struct{ Dir string }) error {
+	if _, err := util.Exec(`git init --quiet "$dir"
+                            cd "$dir"
+                            git config receive.denyCurrentBranch updateInstead
+	                        ln --symbolic --force "$k" "$dir/.git/hooks/update"`,
+		map[string]string{"dir": x.Dir, "k": os.Args[0]}, false); err != nil {
+		return err
+	}
+	exe, err := ex.LookPath("git-receive-pack")
+	if err != nil {
+		return err
+	}
+	return syscall.Exec(exe, []string{exe, x.Dir}, os.Environ())
+}
+
+func generate(cmd string, x struct {
+	Dir               string
+	EarlyDir, LateDir string `cli:"::"`
+}) error {
+	c, err := loadConfig()
+	if err != nil {
+		return err
+	}
+	return c.Render(x.Dir)
+}
+
+func serve(cmd string, x struct{ ConfigPath string }) error {
+	return server.Start(x.ConfigPath)
 }
