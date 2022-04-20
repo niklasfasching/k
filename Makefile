@@ -38,3 +38,6 @@ test-deploy:
 	@ln -rsf ./k testdata/remote/.git/hooks/update
 	go build ./cmd/k
 	git push ./testremote
+
+build:
+	go build ./cmd/k

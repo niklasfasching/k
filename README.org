@@ -1,0 +1,37 @@
+* k
+heroku like git deployment with systemd
+* next
+- encryption uses a hardcoded salt for the key derivation. figure out whether that's safe for real
+- bash completion
+- systemd unit defaults
+  - k.yaml: UnitDefaults map
+  - hardcoded defaults (e.g. WorkingDirectory=$app/:/app/)
+- test setup with nested git directories
+- default variables
+- http
+  - file server: 404 on directory instead of returning <pre></pre>
+- vm management
+  - ssh: ssh-copy-id + sshd config
+    #+begin_src bash
+    # comment out the following in /etc/pam.d/sshd to speed up initial connection time
+    # (on my machine: ~1.5s -> 0.5s)
+    #  # session    optional     pam_motd.so  motd=/run/motd.dynamic
+    #  # session    optional     pam_motd.so noupdate
+    $ sed -i "s/.*PasswordAuthentication.*/PasswordAuthentication no/g" /etc/ssh/sshd_config
+    #+end_src
+  - packages: apt-get + snap + auto-upgrades
+  - firewall
+- systemd
+  - slices for resource limits on apps
+  - watchdog wrapper executable for health checks
+  - on failure notifications
+  - loadcredentials & env files for secrets
+
+* fun facts
+- debugging systemd is much more fun with transient units - e.g.
+  =sudo systemd-run --wait -t -p "BindPaths=/etc:/app" -- bash -c "ls /app /tmp"=
+* unsorted notes
+- Use [[https://github.com/systemd/systemd/issues/16060][LoadCredentials]] for secrets: https://github.com/systemd/systemd/pull/22754
+  - Inline environment variables don't work (=systemctl cat= ignores permissions)
+  - EnvFile still has problem of leaking to child processes. Env vars just don't seem to be best practice after all...
+    - see [[https://www.freedesktop.org/software/systemd/man/systemd.exec.html][Environment=]] [...] environment variables are not suitable for passing secrets [...]
