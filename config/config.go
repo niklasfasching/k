@@ -91,7 +91,10 @@ func (c *C) renderInternals(dir string) error {
 			},
 		},
 		"k-http.service": {
-			"Unit": {"Description": "k web server"},
+			"Unit": {
+				"Description": "k web server",
+				"PartOf":      "k-http.target",
+			},
 			"Service": {
 				"ExecStart":             fmt.Sprintf(`%s serve ${K_RUN_DIR}/server.json`, exe),
 				"ExecReload":            "kill -USR1 $MAINPID",
@@ -99,7 +102,6 @@ func (c *C) renderInternals(dir string) error {
 				"CapabilityBoundingSet": "CAP_NET_BIND_SERVICE",
 				"AmbientCapabilities":   "CAP_NET_BIND_SERVICE",
 				"CacheDirectory":        "k",
-				"PartOf":                "k-http.target",
 			},
 		},
 	}
