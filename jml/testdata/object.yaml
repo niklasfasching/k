@@ -1,0 +1,16 @@
+# comment
+a_int: 1
+b_single_quote: "foo" # comment
+c_double_quote: 'bar' # comment
+d_null: # comment
+e_object:
+  e_1_float: 42.0 # comment
+  e_2_null:
+  e_3_multiline_string: |
+
+    foo
+
+    bar
+
+    baz
+# comment

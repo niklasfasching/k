@@ -1,0 +1,14 @@
+a_int: 1
+b_single_quote: "foo"
+c_double_quote: "bar"
+d_null: null
+e_object: 
+  e_1_float: 42
+  e_2_null: null
+  e_3_multiline_string: |
+    
+    foo
+    
+    bar
+    
+    baz

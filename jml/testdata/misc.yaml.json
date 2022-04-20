@@ -1,0 +1,13 @@
+[
+  42,
+  {
+    "foo": "hello\n  world\n\n!"
+  },
+  {
+    "-key_starting_with_dash": null,
+    "000": "number only key"
+  },
+  {
+    "42key_starting_with_number": null
+  }
+]

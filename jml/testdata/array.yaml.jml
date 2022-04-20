@@ -1,0 +1,12 @@
+- "foo"
+- "foo"
+- 42
+- 42
+- bar: 2
+  foo: 1
+- null
+-
+  - 1
+  - 2
+  - null
+  - null
