@@ -8,6 +8,7 @@ import (
 	"runtime/debug"
 	"strings"
 	"text/template"
+	"time"
 
 	"github.com/niklasfasching/k/config"
 	"github.com/niklasfasching/k/util"
@@ -45,7 +46,7 @@ func getBuildVersion() string {
 		if s.Key == "vcs.revision" {
 			revision = s.Value[:6]
 		} else if s.Key == "vcs.modified" {
-			dirty = "-dirty"
+			dirty = "-dirty " + time.Now().Format(time.RFC3339)
 		}
 	}
 	return fmt.Sprintf("%s%s", revision, dirty)
