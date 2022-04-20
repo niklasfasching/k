@@ -19,7 +19,7 @@ type Config struct {
 	HTTP, HTTPS          int
 	LetsEncryptEmail     string
 	LetsEncryptCachePath string
-	Routes               []Route
+	Routes               []*Route
 }
 
 type Route struct {
@@ -27,6 +27,7 @@ type Route struct {
 	Target    string
 	BasicAuth BasicAuth
 	LogFormat string
+	LogFields map[string]string
 	ErrPaths  map[int]string
 }
 
@@ -111,7 +112,7 @@ func (c *Config) getHandlerAndHostnames() (http.Handler, []string, error) {
 		if err != nil {
 			return nil, nil, err
 		}
-		h, err = LogHandler(h, r.LogFormat, r.ErrPaths)
+		h, err = LogHandler(h, r.LogFormat, r.LogFields, r.ErrPaths)
 		if err != nil {
 			return nil, nil, err
 		}

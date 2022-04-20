@@ -24,7 +24,7 @@ type C struct {
 
 type App struct {
 	Units  Units
-	Routes []server.Route
+	Routes []*server.Route
 	Build  string
 }
 
@@ -125,18 +125,21 @@ func (c *C) renderInternals(dir string) error {
 		filepath.Join(dir, "multi-user.target.wants", "k.target"))
 }
 
-func (us Units) render(dir, name string) error {
-	target, reqs := name+".target", []string{}
+func (us Units) render(dir, appName string) error {
+	target, reqs := appName+".target", []string{}
 	for name, u := range us {
 		reqs = append(reqs, name)
 		u = mergeUnits(Unit{"Unit": {"PartOf": target + " " + "k.target"}}, u)
 		if filepath.Ext(name) == ".service" {
+			name := strings.TrimSuffix(name, ".service")
 			u = mergeUnits(Unit{
 				"Service": {
-					"DynamicUser":    "true",
-					"StateDirectory": name,
-					"CacheDirectory": name,
-					"Environment":    fmt.Sprintf("K_RUN_DIR=%s/k", dir),
+					"SyslogIdentifier": name,
+					"LogExtraFields":   "K=" + appName,
+					"DynamicUser":      "true",
+					"StateDirectory":   name,
+					"CacheDirectory":   name,
+					"Environment":      fmt.Sprintf("K_RUN_DIR=%s/k", dir),
 				},
 			}, u)
 		}
@@ -200,6 +203,12 @@ func parseApps(dir string, fns template.FuncMap, vars interface{}) (map[string]*
 			return nil, err
 		} else if err := jml.Unmarshal(bs, a); err != nil {
 			return nil, err
+		}
+		for _, r := range a.Routes {
+			if r.LogFields == nil {
+				r.LogFields = map[string]string{}
+			}
+			r.LogFields["K"] = name
 		}
 		as[name] = a
 	}

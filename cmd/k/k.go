@@ -223,13 +223,13 @@ func systemctl(cmd string, x struct {
 	if err != nil {
 		return err
 	}
-	if filepath.Ext(unit) == "" {
-		unit += ".target"
-	}
 	script := fmt.Sprintf("systemctl %s %s", cmd, unit)
 	if cmd == "logs" {
-		script = fmt.Sprintf("journalctl -u %s", unit)
+		script = fmt.Sprintf("journalctl K=%s", unit)
 	} else if cmd == "status" {
+		if filepath.Ext(unit) == "" {
+			unit += ".target"
+		}
 		script += " --with-dependencies --lines 100"
 	}
 	_, err = util.SSHExec(s, "SYSTEMD_COLORS=1 "+script, nil, false)

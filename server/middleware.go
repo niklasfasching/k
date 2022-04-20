@@ -1,9 +1,11 @@
 package server
 
 import (
+	"bytes"
 	"crypto/subtle"
+	"encoding/binary"
 	"fmt"
-	"log"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -31,12 +33,15 @@ type responseWriter struct {
 	http.ResponseWriter
 }
 
+var journalSocket = &net.UnixAddr{Name: "/run/systemd/journal/socket", Net: "unixgram"}
+var journalConnection *net.UnixConn
+
 var ipv4Mask = net.CIDRMask(16, 32)  // 255.255.0.0
 var ipv6Mask = net.CIDRMask(56, 128) // ffff:ffff:ffff:ff00::
 var commonLogFormat = `{{ .remote }} - {{ .userAgent }} [{{ .timestamp }}] "{{ .method }} {{ .host }}{{ .url }} {{ .proto }}" {{ .status }} {{ .size }}`
 
-func LogHandler(next http.Handler, format string, errPaths map[int]string) (http.Handler, error) {
-	accessLog := log.New(os.Stdout, "", 0)
+func LogHandler(next http.Handler, format string,
+	fields map[string]string, errPaths map[int]string) (http.Handler, error) {
 	fmt, err := newLogFormatter(format)
 	if err != nil {
 		return nil, err
@@ -44,7 +49,7 @@ func LogHandler(next http.Handler, format string, errPaths map[int]string) (http
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		rw, timestamp := &responseWriter{ResponseWriter: w, req: r}, time.Now()
 		next.ServeHTTP(rw, r)
-		accessLog.Print(fmt(map[string]interface{}{
+		journalLog(fmt(map[string]interface{}{
 			"remote":    maskIP(r.RemoteAddr),
 			"userAgent": r.UserAgent(),
 			"timestamp": timestamp.Format(time.RFC3339),
@@ -54,7 +59,7 @@ func LogHandler(next http.Handler, format string, errPaths map[int]string) (http
 			"url":       r.URL,
 			"status":    rw.status,
 			"size":      rw.count,
-		}))
+		}), "6", fields)
 	}), nil
 }
 
@@ -137,4 +142,34 @@ func maskIP(remoteAddress string) string {
 		return ip.Mask(ipv4Mask).String()
 	}
 	return ip.Mask(ipv6Mask).String()
+}
+
+// https://systemd.io/JOURNAL_NATIVE_PROTOCOL/
+// http://www.freedesktop.org/software/systemd/man/systemd.journal-fields.html
+func journalLog(msg, priority string, kvs map[string]string) error {
+	if journalConnection == nil {
+		c, err := net.ListenUnixgram("unixgram", &net.UnixAddr{Net: "unixgram"})
+		if err != nil {
+			return err
+		}
+		journalConnection = c
+	}
+	w := &bytes.Buffer{}
+	writeJournalKV(w, "MESSAGE", msg)
+	writeJournalKV(w, "PRIORITY", priority)
+	for k, v := range kvs {
+		writeJournalKV(w, k, v)
+	}
+	_, _, err := journalConnection.WriteMsgUnix(w.Bytes(), nil, journalSocket)
+	return err
+}
+
+func writeJournalKV(w io.Writer, k, v string) {
+	if !strings.ContainsRune(v, '\n') {
+		fmt.Fprintf(w, "%s=%s\n", k, v)
+	} else {
+		fmt.Fprint(w, k)
+		binary.Write(w, binary.LittleEndian, uint64(len(v)))
+		fmt.Fprint(w, v)
+	}
 }
