@@ -103,21 +103,10 @@ func (c *Config) serve(s *http.Server) error {
 func (c *Config) getHandlerAndHostnames() (http.Handler, []string, error) {
 	mux, hostnames := http.NewServeMux(), []string{}
 	for _, r := range c.Routes {
-		h, err := http.Handler(nil), error(nil)
-		if strings.HasPrefix(r.Target, "/") {
-			h, err = StaticHandler(r.Target)
-		} else {
-			h, err = ProxyHandler(r.Target)
-		}
+		h, err := r.Handler()
 		if err != nil {
-			return nil, nil, err
-		}
-		h, err = LogHandler(h, r.LogFormat, r.LogFields, r.ErrPaths)
-		if err != nil {
-			return nil, nil, err
-		}
-		if r.BasicAuth != (BasicAuth{}) {
-			h = r.BasicAuth.Handler(h)
+			journalLog(fmt.Sprintf("bad route [%v]: %s", r.Patterns, err), "1", r.LogFields)
+			continue
 		}
 		for _, pattern := range r.Patterns {
 			parts := strings.SplitN(pattern, "/", 2)
@@ -131,6 +120,26 @@ func (c *Config) getHandlerAndHostnames() (http.Handler, []string, error) {
 		}
 	}
 	return mux, hostnames, nil
+}
+
+func (r *Route) Handler() (http.Handler, error) {
+	h, err := http.Handler(nil), error(nil)
+	if strings.HasPrefix(r.Target, "/") {
+		h, err = StaticHandler(r.Target)
+	} else {
+		h, err = ProxyHandler(r.Target)
+	}
+	if err != nil {
+		return nil, err
+	}
+	h, err = LogHandler(h, r.LogFormat, r.LogFields, r.ErrPaths)
+	if err != nil {
+		return nil, err
+	}
+	if r.BasicAuth != (BasicAuth{}) {
+		h = r.BasicAuth.Handler(h)
+	}
+	return h, err
 }
 
 func readConfig(path string) (*Config, error) {
