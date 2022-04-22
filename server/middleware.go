@@ -11,6 +11,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"text/template"
 	"time"
@@ -23,7 +24,6 @@ type BasicAuth struct {
 }
 
 type fs struct{ http.FileSystem }
-type file struct{ http.File }
 
 type responseWriter struct {
 	status   int
@@ -94,10 +94,19 @@ func (ba *BasicAuth) Handler(next http.Handler) http.Handler {
 
 func (fs *fs) Open(name string) (http.File, error) {
 	f, err := fs.FileSystem.Open(name)
-	return &file{f}, err
+	if err != nil {
+		return nil, err
+	} else if s, err := f.Stat(); err != nil {
+		return nil, err
+	} else if !s.IsDir() {
+		return f, nil
+	} else if f2, err := fs.FileSystem.Open(filepath.Join(name, "index.html")); err != nil {
+		return nil, err
+	} else if err := f2.Close(); err != nil {
+		return nil, err
+	}
+	return f, nil
 }
-
-func (f *file) Readdir(int) ([]os.FileInfo, error) { return nil, nil }
 
 func (r *responseWriter) Write(bytes []byte) (count int, err error) {
 	count, err = r.ResponseWriter.Write(bytes)

@@ -88,8 +88,6 @@ Apr 21 00:45:28 localhost systemd[1]: Listening on k-https.socket.
   - hardcoded defaults (e.g. WorkingDirectory=$app/:/app/)
 - test setup with nested git directories
 - default variables
-- http
-  - file server: 404 on directory instead of returning <pre></pre>
 - vm management
   - ssh: ssh-copy-id + sshd config
     #+begin_src bash
