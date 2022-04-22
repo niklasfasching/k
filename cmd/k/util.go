@@ -46,7 +46,7 @@ func getBuildVersion() string {
 		if s.Key == "vcs.revision" {
 			revision = s.Value[:6]
 		} else if s.Key == "vcs.modified" {
-			dirty = "-dirty " + time.Now().Format(time.RFC3339)
+			dirty = fmt.Sprintf("-dirty-%d", time.Now().UnixNano())
 		}
 	}
 	return fmt.Sprintf("%s%s", revision, dirty)
