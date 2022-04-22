@@ -101,7 +101,7 @@ func (c *C) renderInternals(dir string) error {
 				"DynamicUser":           "true",
 				"CapabilityBoundingSet": "CAP_NET_BIND_SERVICE",
 				"AmbientCapabilities":   "CAP_NET_BIND_SERVICE",
-				"CacheDirectory":        "k",
+				"CacheDirectory":        "k-http",
 			},
 		},
 	}
