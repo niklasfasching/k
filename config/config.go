@@ -161,15 +161,20 @@ func (u Unit) render(dir, name string) error {
 			keys = append(keys, k)
 			switch v := v.(type) {
 			case nil:
+				sm[k] += fmt.Sprintf("%s=\n", k)
+			case string, bool, int, float64:
+				sm[k] += fmt.Sprintf("%s=%v\n", k, v)
 			case []interface{}:
 				for _, v := range v {
-					if _, ok := v.(string); !ok {
+					switch v := v.(type) {
+					case nil:
+						continue
+					case string, bool, int, float64:
+						sm[k] += fmt.Sprintf("%s=%s\n", k, v)
+					default:
 						return fmt.Errorf("[%s] %s is not string but %T", section, k, v)
 					}
-					sm[k] += fmt.Sprintf("%s=%s\n", k, v)
 				}
-			case string:
-				sm[k] += fmt.Sprintf("%s=%s\n", k, v)
 			default:
 				return fmt.Errorf("[%s] %s is not string but %T", section, k, v)
 			}
