@@ -24,6 +24,7 @@ var api = cli.API{
 	"restart":  {F: systemctl, Desc: "systemctl restart"},
 	"status":   {F: systemctl, Desc: `show status of app - equivalent to systemctl status`},
 	"logs":     {F: systemctl, Desc: "journalctl K=<app>"},
+	"notify":   {F: notify, Desc: "send message to k.Vars.telegram $bot_id:$token:$chat_id"},
 	"version":  {F: version},
 	"init":     {F: initConfig, Desc: "set up the provided config <dir>"},
 	"deploy":   {F: deploy, Desc: "git push config & app repo's"},
@@ -262,6 +263,27 @@ func generate(cmd string, x struct {
 		return err
 	}
 	return c.Render(x.Dir)
+}
+
+func notify(cmd string, a struct {
+	Message string `cli:"::"`
+}, f struct {
+	App string
+}) error {
+	c, err := loadConfig()
+	if err != nil {
+		return err
+	}
+	s, _ := c.Vars["telegram"].(string)
+	xs := strings.Split(s, ":")
+	if len(xs) != 3 {
+		return fmt.Errorf(".Vars.telegram must be in the format <bot_id>:<token>:<chat_id>")
+	}
+	msg := a.Message
+	if f.App != "" {
+		msg = strings.TrimSpace(msg + "\n" + f.App)
+	}
+	return sendTelegramMessage(xs[0], xs[1], xs[2], msg)
 }
 
 func serve(cmd string, x struct{ ConfigPath string }) error {

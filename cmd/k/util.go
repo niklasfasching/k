@@ -1,8 +1,12 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"os"
 	"path/filepath"
 	"runtime/debug"
@@ -106,4 +110,26 @@ func getAppName() (string, error) {
 		return filepath.Base(dir), nil
 	}
 	return "", fmt.Errorf("not inside an app directory")
+}
+
+func sendTelegramMessage(botId, token, chatId, text string) error {
+	body, err := json.Marshal(map[string]string{"chat_id": chatId, "text": text})
+	if err != nil {
+		return err
+	}
+	url := fmt.Sprintf("https://api.telegram.org/%s:%s/sendMessage", botId, token)
+	r, err := http.Post(url, "application/json", bytes.NewBuffer(body))
+	if err != nil {
+		return err
+	}
+	defer r.Body.Close()
+	bs, err := io.ReadAll(r.Body)
+	if err != nil {
+		return err
+	}
+	v := struct{ Ok bool }{}
+	if err := json.Unmarshal(bs, &v); err != nil || !v.Ok {
+		return fmt.Errorf("error sending message: %s", string(bs))
+	}
+	return nil
 }
