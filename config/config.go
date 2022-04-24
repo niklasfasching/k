@@ -75,7 +75,15 @@ func (c *C) renderInternals(dir string) error {
 	if err != nil {
 		return err
 	}
-	internal := Units{
+	notifyService := Unit{
+		"Service": {
+			"ExecStart": fmt.Sprintf("%s notify --app %%i", exe),
+		},
+	}
+	if err := notifyService.render(dir, "k-notify@.service"); err != nil {
+		return err
+	}
+	httpServer := Units{
 		"k-http.socket": {
 			"Socket": {
 				"ListenStream":       strconv.Itoa(c.Server.HTTP),
@@ -91,21 +99,13 @@ func (c *C) renderInternals(dir string) error {
 			},
 		},
 		"k-http.service": {
-			"Unit": {
-				"Description": "k web server",
-				"PartOf":      "k-http.target",
-			},
 			"Service": {
-				"ExecStart":             fmt.Sprintf(`%s serve ${K_RUN_DIR}/server.json`, exe),
-				"ExecReload":            "kill -USR1 $MAINPID",
-				"DynamicUser":           "true",
-				"CapabilityBoundingSet": "CAP_NET_BIND_SERVICE",
-				"AmbientCapabilities":   "CAP_NET_BIND_SERVICE",
-				"CacheDirectory":        "k-http",
+				"ExecStart": fmt.Sprintf(`%s serve ${K_RUN_DIR}/server.json`, exe),
+				"Restart":   "always",
 			},
 		},
 	}
-	if err := internal.render(dir, "k-http"); err != nil {
+	if err := httpServer.render(dir, "k-http"); err != nil {
 		return err
 	}
 	serverConfigPath := filepath.Join(dir, "k", "server.json")
@@ -142,6 +142,7 @@ func (us Units) render(dir, appName string) error {
 					"StateDirectory":   name,
 					"CacheDirectory":   name,
 					"Environment":      fmt.Sprintf("K_RUN_DIR=%s/k", dir),
+					"Restart":          "always",
 				},
 			}, u)
 		}
@@ -149,7 +150,13 @@ func (us Units) render(dir, appName string) error {
 			return err
 		}
 	}
-	return Unit{"Unit": {"Requires": strings.Join(reqs, " ")}}.render(dir, target)
+	t := Unit{
+		"Unit": {
+			"Requires":  strings.Join(reqs, " "),
+			"OnFailure": "k-notify@%N.service",
+		},
+	}
+	return t.render(dir, target)
 }
 
 func (u Unit) render(dir, name string) error {
