@@ -3,7 +3,9 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"log"
+	"net"
 	"os"
 	ex "os/exec"
 	"path/filepath"
@@ -21,6 +23,7 @@ var api = cli.API{
 	"start":    {F: systemctl, Desc: "systemctl start"},
 	"stop":     {F: systemctl, Desc: "systemctl stop"},
 	"reload":   {F: systemctl, Desc: "systemctl reload"},
+	"tunnel":   {F: tunnel, Desc: "tunnel <address>:<remote_address>"},
 	"restart":  {F: systemctl, Desc: "systemctl restart"},
 	"status":   {F: systemctl, Desc: `show status of app - equivalent to systemctl status`},
 	"logs":     {F: systemctl, Desc: "journalctl K=<app>"},
@@ -288,4 +291,52 @@ func notify(cmd string, a struct {
 
 func serve(cmd string, x struct{ ConfigPath string }) error {
 	return server.Start(x.ConfigPath)
+}
+
+func tunnel(cmd string, x struct{ LocalAddress string }) error {
+	c, err := loadConfig()
+	if err != nil {
+		return err
+	}
+	if c.Tunnel.Pattern == "" {
+		return fmt.Errorf("Tunnel.Pattern not configured")
+	}
+	r, err := util.SSH(c.User, c.Host)
+	if err != nil {
+		return err
+	} else if err := remoteInstallBinary(r, serverBin); err != nil {
+		return err
+	} else if _, err := util.SSHExec(r, "systemctl restart k-http", nil, false); err != nil {
+		return err
+	}
+	cDir, err := filepath.EvalSymlinks(filepath.Join(root, configDir))
+	if err != nil {
+		return err
+	}
+	if err := gitPush(c, cDir, configDir); err != nil {
+		return err
+	}
+	rl, err := r.Listen("tcp", c.Tunnel.Address)
+	if err != nil {
+		return err
+	}
+	defer rl.Close()
+	for {
+		rc, err := rl.Accept()
+		if err != nil {
+			log.Println("accept", err)
+			continue
+		}
+		go func() {
+			defer rc.Close()
+			lc, err := net.Dial("tcp", x.LocalAddress)
+			if err != nil {
+				log.Println("dial", err)
+				return
+			}
+			defer lc.Close()
+			go io.Copy(rc, lc)
+			io.Copy(lc, rc)
+		}()
+	}
 }

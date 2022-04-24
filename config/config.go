@@ -19,7 +19,12 @@ type C struct {
 	Vars       map[string]interface{}
 	User, Host string
 	Server     server.Config
+	Tunnel     Tunnel
 	Apps       map[string]*App `json:"-"`
+}
+
+type Tunnel struct {
+	Pattern, Address string
 }
 
 type App struct {
@@ -37,6 +42,9 @@ var kFile = "k.yaml"
 func Load(dir string, fns template.FuncMap) (*C, error) {
 	c := &C{
 		User: "root",
+		Tunnel: Tunnel{
+			Address: "localhost:9999",
+		},
 		Server: server.Config{
 			HTTP:                 80,
 			HTTPS:                443,
@@ -70,6 +78,12 @@ func (c *C) renderInternals(dir string) error {
 	for name, a := range c.Apps {
 		reqs = append(reqs, name+".target")
 		sc.Routes = append(sc.Routes, a.Routes...)
+	}
+	if c.Tunnel.Pattern != "" {
+		sc.Routes = append(sc.Routes, &server.Route{
+			Target:   "http://" + c.Tunnel.Address,
+			Patterns: []string{c.Tunnel.Pattern},
+		})
 	}
 	exe, err := filepath.EvalSymlinks(os.Args[0])
 	if err != nil {
