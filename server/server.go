@@ -11,6 +11,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/niklasfasching/k/util"
 	"golang.org/x/crypto/acme/autocert"
 	"golang.org/x/sync/errgroup"
 )
@@ -105,7 +106,7 @@ func (c *Config) getHandlerAndHostnames() (http.Handler, []string, error) {
 	for _, r := range c.Routes {
 		h, err := r.Handler()
 		if err != nil {
-			journalLog(fmt.Sprintf("bad route [%v]: %s", r.Patterns, err), "1", r.LogFields)
+			util.JournalLog(fmt.Sprintf("bad route [%v]: %s", r.Patterns, err), "1", r.LogFields)
 			continue
 		}
 		for _, pattern := range r.Patterns {
