@@ -77,12 +77,20 @@ func (c *C) renderInternals(dir string) error {
 	sc, reqs := c.Server, []string{}
 	for name, a := range c.Apps {
 		reqs = append(reqs, name+".target")
-		sc.Routes = append(sc.Routes, a.Routes...)
+		for _, r := range a.Routes {
+			if r.LogFields == nil {
+				r.LogFields = map[string]string{}
+			}
+			r.LogFields["K"] = name
+			r.LogFields["SYSLOG_IDENTIFIER"] = "k-http"
+			sc.Routes = append(sc.Routes, r)
+		}
 	}
 	if c.Tunnel.Pattern != "" {
 		sc.Routes = append(sc.Routes, &server.Route{
-			Target:   "http://" + c.Tunnel.Address,
-			Patterns: []string{c.Tunnel.Pattern},
+			Target:    "http://" + c.Tunnel.Address,
+			Patterns:  []string{c.Tunnel.Pattern},
+			LogFields: map[string]string{"SYSLOG_IDENTIFIER": "k-http"},
 		})
 	}
 	exe, err := filepath.EvalSymlinks(os.Args[0])
@@ -231,12 +239,6 @@ func parseApps(dir string, fns template.FuncMap, vars interface{}) (map[string]*
 			return nil, err
 		} else if err := jml.Unmarshal(bs, a); err != nil {
 			return nil, err
-		}
-		for _, r := range a.Routes {
-			if r.LogFields == nil {
-				r.LogFields = map[string]string{}
-			}
-			r.LogFields["K"] = name
 		}
 		as[name] = a
 	}
