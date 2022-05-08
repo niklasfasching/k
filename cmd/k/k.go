@@ -103,9 +103,12 @@ func deploy(cmd string,
 	if fs.Dev {
 		c.User, c.Host = "root", "localhost"
 	}
-	if s, err := util.SSH(c.User, c.Host); err != nil {
+	s, err := util.SSH(c.User, c.Host)
+	if err != nil {
 		return err
-	} else if err := remoteInstallBinary(s, serverBin); err != nil {
+	}
+	defer s.Close()
+	if err := remoteInstallBinary(s, serverBin); err != nil {
 		return err
 	} else if err := util.SCP(s,
 		filepath.Join(clientRoot, keyFile),
@@ -142,6 +145,7 @@ func systemctl(cmd string, x struct {
 	if err != nil {
 		return err
 	}
+	defer s.Close()
 	script := fmt.Sprintf("systemctl %s %s", cmd, unit)
 	if cmd == "logs" {
 		script = fmt.Sprintf("journalctl K=%s", unit)
@@ -305,7 +309,9 @@ func tunnel(cmd string, x struct{ LocalAddress string }) error {
 	r, err := util.SSH(c.User, c.Host)
 	if err != nil {
 		return err
-	} else if err := remoteInstallBinary(r, serverBin); err != nil {
+	}
+	defer r.Close()
+	if err := remoteInstallBinary(r, serverBin); err != nil {
 		return err
 	} else if _, err := util.SSHExec(r, "systemctl restart k-http", nil, false); err != nil {
 		return err
