@@ -102,6 +102,9 @@ func deploy(cmd string,
 	if app := c.Apps[name]; app == nil {
 		return fmt.Errorf("'%s' is not a valid app", name)
 	}
+	if fs.Dev {
+		c.User, c.Host = "root", "localhost"
+	}
 	if s, err := util.SSH(c.User, c.Host); err != nil {
 		return err
 	} else if err := remoteInstallBinary(s, serverBin); err != nil {

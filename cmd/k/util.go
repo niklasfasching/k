@@ -22,7 +22,7 @@ import (
 func remoteInstallBinary(c *ssh.Client, binPath string) error {
 	if rv, err := util.SSHExec(c, fmt.Sprintf("%s version || true", binPath), nil, true); err != nil {
 		return err
-	} else if v := getBuildVersion(); rv != v {
+	} else if v := getBuildVersion(); rv != v || v == "" {
 		if !strings.Contains(rv, "not found") {
 			log.Printf("k version mismatch: client='%s', server='%s'", v, rv)
 		}
