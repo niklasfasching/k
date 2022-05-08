@@ -3,9 +3,7 @@ package main
 import (
 	"bufio"
 	"fmt"
-	"io"
 	"log"
-	"net"
 	"os"
 	ex "os/exec"
 	"path/filepath"
@@ -319,27 +317,13 @@ func tunnel(cmd string, x struct{ LocalAddress string }) error {
 	if err := gitPush(c, cDir, configDir); err != nil {
 		return err
 	}
-	rl, err := r.Listen("tcp", c.Tunnel.Address)
-	if err != nil {
-		return err
-	}
-	defer rl.Close()
 	for {
-		rc, err := rl.Accept()
+		log.Printf("opening tunnel: 'http://%s' -> %s", c.Tunnel.Pattern, x.LocalAddress)
+		log.Println("tunnel exited with: ", util.ReverseTunnel(r, x.LocalAddress, c.Tunnel.Address))
+		r.Close()
+		r, err = util.SSH(c.User, c.Host)
 		if err != nil {
-			log.Println("accept", err)
-			continue
+			return err
 		}
-		go func() {
-			defer rc.Close()
-			lc, err := net.Dial("tcp", x.LocalAddress)
-			if err != nil {
-				log.Println("dial", err)
-				return
-			}
-			defer lc.Close()
-			go io.Copy(rc, lc)
-			io.Copy(lc, rc)
-		}()
 	}
 }

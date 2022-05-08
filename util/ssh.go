@@ -3,6 +3,7 @@ package util
 import (
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"os"
 	"path/filepath"
@@ -85,4 +86,29 @@ func SSHExec(c *ssh.Client, script string, env map[string]string, capture bool) 
 	}
 	s.Stdout, s.Stderr = os.Stdout, os.Stderr
 	return "", s.Run(script)
+}
+
+func ReverseTunnel(r *ssh.Client, localAddr, remoteAddr string) error {
+	rl, err := r.Listen("tcp", remoteAddr)
+	if err != nil {
+		return err
+	}
+	defer rl.Close()
+	for {
+		rc, err := rl.Accept()
+		if err != nil {
+			return err
+		}
+		go func() {
+			defer rc.Close()
+			lc, err := net.Dial("tcp", localAddr)
+			if err != nil {
+				log.Println(err)
+				return
+			}
+			defer lc.Close()
+			go io.Copy(rc, lc)
+			io.Copy(lc, rc)
+		}()
+	}
 }
