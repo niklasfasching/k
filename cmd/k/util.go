@@ -98,18 +98,15 @@ func gitPush(c *config.C, dir, remote string) error {
 }
 
 func getAppName() (string, error) {
-	cDir, err := filepath.EvalSymlinks(filepath.Join(root, configDir))
-	if err != nil {
+	if cDir, err := filepath.EvalSymlinks(filepath.Join(root, configDir)); err != nil {
 		return "", err
-	}
-	if dir, err := os.Getwd(); err != nil {
+	} else if aDir, err := os.Getwd(); err != nil {
 		return "", err
-	} else if cDir == dir {
-		return "k", nil
-	} else if filepath.Dir(cDir) == filepath.Dir(dir) {
-		return filepath.Base(dir), nil
+	} else if aRelDir, err := filepath.Rel(filepath.Dir(cDir), aDir); err != nil {
+		return "", err
+	} else {
+		return strings.Split(aRelDir, string(os.PathSeparator))[0], nil
 	}
-	return "", fmt.Errorf("not inside an app directory")
 }
 
 func sendTelegramMessage(botId, token, chatId, text string) error {
