@@ -81,13 +81,18 @@ Apr 21 00:45:28 localhost systemd[1]: Listening on k-https.socket.
 #+end_src
 
 * next
+- implement just enough git to deploy without shelling out (init, push, receive, checkout, ...)
+- livereload fileserver with proxy
+- status and logs
+  - filter and limit lines
+  - show in pager
+  - exclude k-http lines. could filter by K=$app to get all related to app
+    and _SYSTEMD_SLICE=k-$app to filter just for self
 - encryption uses a hardcoded salt for the key derivation. figure out whether that's safe for real
-- bash completion
-- systemd unit defaults
-  - k.yaml: UnitDefaults map
-  - hardcoded defaults (e.g. WorkingDirectory=$app/:/app/)
+- k.yaml
+  - systemd unit defaults
+  - default variables
 - test setup with nested git directories
-- default variables
 - vm management
   - ssh: ssh-copy-id + sshd config
     #+begin_src bash
@@ -99,10 +104,14 @@ Apr 21 00:45:28 localhost systemd[1]: Listening on k-https.socket.
     #+end_src
   - packages: apt-get + snap + auto-upgrades
   - firewall
+  - hostname: edit /etc/hostname
+  - ssh-copy-id
+  - how to apply server file configuration?
+  - is it enough to add a dropin for systemd?
+  - should i just allow copying files over and make a backup of the original file?
 - systemd
-  - slices for resource limits on apps
+  - slices for resource limits on apps - could be used for automatic resource usage dashboards
   - watchdog wrapper executable for health checks
-  - on failure notifications
   - loadcredentials & env files for secrets
 
 * fun facts
@@ -113,3 +122,6 @@ Apr 21 00:45:28 localhost systemd[1]: Listening on k-https.socket.
   - Inline environment variables don't work (=systemctl cat= ignores permissions)
   - EnvFile still has problem of leaking to child processes. Env vars just don't seem to be best practice after all...
     - see [[https://www.freedesktop.org/software/systemd/man/systemd.exec.html][Environment=]] [...] environment variables are not suitable for passing secrets [...]
+- systemd overrides can be applied to slices as defined by the unit name split at =-= - i.e. k-http.service
+  would read the overrrides k/.service and -/.service. For now I think I want defaults rather than overrides and
+  some app-specific configuration - e.g. LogExtraFields should contain the app/target name, not the unit name
