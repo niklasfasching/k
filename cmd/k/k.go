@@ -151,7 +151,7 @@ func systemctl(cmd string, x struct {
 		script = fmt.Sprintf("journalctl K=%s", unit)
 	} else if cmd == "status" {
 		if filepath.Ext(unit) == "" {
-			unit += ".target"
+			script += ".target"
 		}
 		script += " --with-dependencies --lines 100"
 	}
