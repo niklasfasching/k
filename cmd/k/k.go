@@ -18,17 +18,17 @@ import (
 
 var api = cli.API{
 	"ls":       {F: ls, Desc: "list all apps"},
-	"start":    {F: systemctl, Desc: "systemctl start"},
-	"stop":     {F: systemctl, Desc: "systemctl stop"},
-	"reload":   {F: systemctl, Desc: "systemctl reload"},
+	"start":    {F: systemctl, Desc: "systemctl start", Complete: completeApps},
+	"stop":     {F: systemctl, Desc: "systemctl stop", Complete: completeApps},
+	"reload":   {F: systemctl, Desc: "systemctl reload", Complete: completeApps},
 	"tunnel":   {F: tunnel, Desc: "tunnel <address>:<remote_address>"},
-	"restart":  {F: systemctl, Desc: "systemctl restart"},
-	"status":   {F: systemctl, Desc: `show status of app - equivalent to systemctl status`},
-	"logs":     {F: systemctl, Desc: "journalctl K=<app>"},
+	"restart":  {F: systemctl, Desc: "systemctl restart", Complete: completeApps},
+	"status":   {F: systemctl, Desc: `show status of app - equivalent to systemctl status`, Complete: completeApps},
+	"logs":     {F: systemctl, Desc: "journalctl K=<app>", Complete: completeApps},
 	"notify":   {F: notify, Desc: "send message to k.Vars.telegram $bot_id:$token:$chat_id"},
 	"version":  {F: version},
 	"init":     {F: initConfig, Desc: "set up the provided config <dir>"},
-	"deploy":   {F: deploy, Desc: "git push config & app repo's"},
+	"deploy":   {F: deploy, Desc: "git push config & app repo's", Complete: completeApps},
 	"encrypt":  {F: encrypt, Desc: "encrypt the provided <value>"},
 	"generate": {F: generate, Desc: "-"},
 	"receive":  {F: receive, Desc: "-"},
@@ -332,4 +332,16 @@ func tunnel(cmd string, x struct{ LocalAddress string }) error {
 			return err
 		}
 	}
+}
+
+func completeApps(args []string) []string {
+	completions := []string{}
+	c, err := loadConfig()
+	if err != nil {
+		return nil
+	}
+	for name := range c.Apps {
+		completions = append(completions, name)
+	}
+	return completions
 }

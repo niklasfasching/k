@@ -18,24 +18,50 @@ type API map[string]CMD
 
 type CMD struct {
 	F         interface{}
+	Complete  func([]string) []string
 	Desc, Doc string
 }
 
 var kebabCaseRegexp = regexp.MustCompile(`([a-z]+)([A-Z]+)`)
 
 func (a API) Run(cmd string, args []string) error {
-	if c, ok := a[cmd]; ok {
+	if cmd == "shell-complete" {
+		return a.complete(args)
+	} else if c, ok := a[cmd]; ok {
 		return c.call(cmd, args)
 	}
 	return a.usage(cmd)
 }
 
-func (a API) Complete() {
-	for name, c := range a {
-		if c.Doc != "-" && c.Desc != "-" {
-			log.Println(name)
+func (a API) complete(args []string) error {
+	if len(args) == 0 {
+		script := fmt.Sprintf(`
+          function _complete_%[1]s() {
+              local current="${COMP_WORDS[COMP_CWORD]}"
+              local args="${COMP_WORDS[@]:1:$COMP_CWORD}"
+              COMPREPLY=( $(compgen -W "$(%[1]s shell-complete "$args")" -- "$current") )
+          }
+          complete -F _complete_%[1]s -o default %[1]s`, os.Args[0])
+		log.Println(script)
+	} else if args = strings.Split(args[0], " "); len(args) <= 1 {
+		for name := range a {
+			if a[name].Desc != "-" {
+				log.Println(name)
+			}
 		}
+	} else if cmd, ok := a[args[0]]; !ok {
+		return nil
+	} else if current := args[len(args)-1]; strings.HasPrefix(current, "-") {
+		if t := reflect.TypeOf(cmd.F); t.NumIn() == 3 {
+			ft := t.In(2)
+			for i, n := 0, ft.NumField(); i < n; i++ {
+				log.Println("--" + kebabCase(ft.Field(i).Name))
+			}
+		}
+	} else if cmd.Complete != nil {
+		log.Println(strings.Join(cmd.Complete(args), " "))
 	}
+	return nil
 }
 
 func (a API) usage(cmd string) error {
@@ -43,7 +69,7 @@ func (a API) usage(cmd string) error {
 	if cmd != "" {
 		s += "Unknown command: " + cmd + "\n"
 	}
-	s += fmt.Sprintf("\nUsage: %s [Command] [Flags] [Args]\n\n", exe)
+	s += fmt.Sprintf("Usage: %s [Command] [Flags] [Args]\n", exe)
 	for c := range a {
 		cmds = append(cmds, c)
 	}
@@ -51,9 +77,9 @@ func (a API) usage(cmd string) error {
 	s += "Commands:\n"
 	for _, cmd := range cmds {
 		if desc := a[cmd].Desc; desc != "-" {
-			s += fmt.Sprintf("\n\t%s\n", cmd)
+			s += fmt.Sprintf("  %s\n", cmd)
 			if desc != "" {
-				s += fmt.Sprintf("\t\t%s\n", desc)
+				s += fmt.Sprintf("    %s\n", desc)
 			}
 		}
 	}
@@ -142,12 +168,12 @@ func (c CMD) usage(cmd string, err error) error {
 	exe := filepath.Base(os.Args[0])
 	s, ft := "", reflect.TypeOf(c.F)
 	sx := fmt.Sprintf("Usage: %s %s ", exe, cmd)
-	if err != nil {
-		sx = fmt.Sprintf("Error:\t%s\n", err) + sx
+	if err != nil && err != flag.ErrHelp {
+		sx = fmt.Sprintf("Error:  %s\n", err) + sx
 	}
 	if ft.NumIn() == 3 {
 		t := ft.In(2)
-		s += "\tFlags:"
+		s += "  Flags:"
 		sx += "[Flags] "
 		for i, n := 0, t.NumField(); i < n; i++ {
 			s += fieldUsage(t.Field(i), func(name string, tag []string) string {
@@ -157,7 +183,7 @@ func (c CMD) usage(cmd string, err error) error {
 	}
 	if ft.NumIn() >= 2 {
 		t := ft.In(1)
-		s += "\tArgs:"
+		s += "  Args:"
 		for i, n := 0, t.NumField(); i < n; i++ {
 			s += fieldUsage(t.Field(i), func(name string, tag []string) string {
 				if len(tag) == 2 {
@@ -170,21 +196,21 @@ func (c CMD) usage(cmd string, err error) error {
 		}
 	}
 	if c.Doc != "" {
-		s += "Docs:\n\t" + strings.ReplaceAll(strings.TrimSpace(c.Doc), "\n", "\n\t")
+		s += "Docs:\n  " + strings.ReplaceAll(strings.TrimSpace(c.Doc), "\n", "\n  ")
 	}
-	return fmt.Errorf("%s\n\n%s", sx, s)
+	return fmt.Errorf("%s\n%s", sx, s)
 }
 
 func fieldUsage(f reflect.StructField, nameify func(string, []string) string) string {
 	tag := splitTag(f)
-	s := fmt.Sprintf("\n\t\t%s", nameify(f.Name, tag))
+	s := fmt.Sprintf("\n    %s", nameify(f.Name, tag))
 	if len(tag) == 2 {
-		s += fmt.Sprintf("\t(%s\t:: %#v)\n", f.Type, tag[0])
+		s += fmt.Sprintf("  (%s :: %#v)", f.Type, tag[0])
 	} else {
-		s += fmt.Sprintf("\t(%s)\n", f.Type)
+		s += fmt.Sprintf("  (%s)", f.Type)
 	}
 	if len(tag) >= 1 {
-		s += fmt.Sprintf("\t\t\t%s\n", tag[0])
+		s += fmt.Sprintf("  %s\n", tag[0])
 	}
 	return s
 }
