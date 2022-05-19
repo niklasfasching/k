@@ -7,6 +7,7 @@ import (
 	"os"
 	ex "os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"syscall"
@@ -30,6 +31,7 @@ var api = cli.API{
 	"init":     {F: initConfig, Desc: "set up the provided config <dir>"},
 	"deploy":   {F: deploy, Desc: "git push config & app repo's", Complete: completeApps},
 	"encrypt":  {F: encrypt, Desc: "encrypt the provided <value>"},
+	"decrypt":  {F: decrypt, Desc: "decrypt the provided <value>"},
 	"generate": {F: generate, Desc: "-"},
 	"receive":  {F: receive, Desc: "-"},
 	"update":   {F: update, Desc: "-"},
@@ -77,6 +79,23 @@ func encrypt(cmd string, args struct{ PlainText string }) error {
 		return err
 	}
 	log.Printf(`{{ decrypt "%s" }}`, s)
+	return nil
+}
+
+func decrypt(cmd string, args struct{ CipherText string }) error {
+	m := regexp.MustCompile(`([\w/=]{24,})`).FindStringSubmatch(args.CipherText)
+	if m == nil {
+		return fmt.Errorf("arg does not contain an encrypted value")
+	}
+	v, err := util.OpenVault(filepath.Join(root, keyFile), true)
+	if err != nil {
+		return err
+	}
+	s, err := v.Decrypt(m[1])
+	if err != nil {
+		return err
+	}
+	log.Printf(s)
 	return nil
 }
 
