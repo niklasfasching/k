@@ -46,7 +46,9 @@ var configDir = ".config"
 var keyFile = ".key"
 
 func init() {
-	if isServer := os.Getenv("DISPLAY") == ""; isServer {
+	if kRoot := os.Getenv("K_ROOT"); kRoot != "" {
+		root = kRoot
+	} else if isServer := os.Getenv("DISPLAY") == ""; isServer {
 		root = serverRoot
 	}
 }
