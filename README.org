@@ -81,6 +81,7 @@ Apr 21 00:45:28 localhost systemd[1]: Listening on k-https.socket.
 #+end_src
 
 * next
+- how to run integration tests in ci
 - implement just enough git to deploy without shelling out (init, push, receive, checkout, ...)
 - livereload fileserver with proxy
 - status and logs

@@ -1,0 +1,122 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+### test helpers
+
+function run() {
+    echo "=> $1"
+    tmp=$(mktemp -d)
+    mkdir "$tmp/.config"
+    trap 'rm -rf $tmp' EXIT
+    make build stop start-quiet &
+    trap 'sudo kill 0' EXIT
+    timeout --foreground --verbose 5 \
+            bash -c 'while true; do sleep 0.1; ssh -q root@localhost true && break; done'
+    log="$tmp/_run_.log"
+    touch "$log"
+    K_ROOT="$tmp" $1 "$log" || echo "$1 exited with $?"
+    logs_dir=$(dirname "$0")/logs
+    cat "$log"
+    if [[ ${update:-} == true ]]; then
+        mkdir -p "$logs_dir" && cp "$log" "$logs_dir/$1.log"
+    else
+        delta=$(diff "$logs_dir/$1.log" "$log"|| true)
+        if [[ -n $delta ]]; then
+            echo "<= $1 FAILURE:"
+            echo "$delta"
+            echo "=="
+        else
+            echo "<= $1 SUCCESS"
+        fi
+    fi
+    make stop
+}
+
+function commit() {
+    for dir in "$@"; do
+        (cd "$K_ROOT/$dir" &&
+             git init -q &&
+             git add . &&
+             (git commit -q -m commit || true))
+    done
+}
+
+### tests
+
+# Deploy should
+# 1. install the k binary on the server if necessary
+# 2. push config and app repo (and run the app `.Build` script)
+# 3. serve the routes defined for the app
+function test_basics() {
+    echo 'Host: "localhost"' > "$K_ROOT/.config/k.yaml"
+    echo '
+          Build: "echo was-built > /opt/k/app/was-built"
+          Routes:
+            - Patterns:
+                - "/"
+              Target: "/opt/k/app"
+          ' > "$K_ROOT/.config/app.yaml"
+
+    # first deploy
+    mkdir "$K_ROOT/app"
+    echo foobar > "$K_ROOT/app/example"
+    commit "app" ".config"
+    bin/k deploy app
+    curl localhost:80/example >> "$1"
+    curl localhost:80/was-built >> "$1"
+
+    # re-deploy after change
+    echo foobarbaz > "$K_ROOT/app/example"
+    commit app .config
+    bin/k deploy app
+    curl localhost:80/example >> "$1"
+}
+
+function test_notify() {
+    echo 'Host: "localhost"' > "$K_ROOT/.config/k.yaml"
+    echo '
+          Units:
+            app.service:
+              Service:
+                ExecStart: "sleep 9001"
+                Restart: "always"
+          ' > "$K_ROOT/.config/app.yaml"
+    mkdir "$K_ROOT/app"
+    touch "$K_ROOT/app/dummy_file"
+    commit "app" ".config"
+    ssh root@localhost systemctl reset-failed
+    bin/k deploy app
+    sleep 1
+    {
+        echo "--- after 1st deploy";
+        ssh root@localhost systemctl --failed;
+        echo "notify count: $(ssh root@localhost journalctl -u k-notify@app.service | grep -c Started)"
+    } >> "$1"
+    echo "killing app 10x..."
+    ssh root@localhost 'for i in $(seq 0 10); do pkill sleep; sleep 0.1; done'
+    sleep 1
+    {
+        echo "--- after 10x kills";
+        ssh root@localhost systemctl --failed;
+        echo "notify count: $(ssh root@localhost journalctl -u k-notify@app.service | grep -c Started)"
+    } >> "$1"
+    bin/k deploy app
+    {
+        echo "--- after 2nd deploy";
+        ssh root@localhost systemctl --failed;
+        echo "notify count: $(ssh root@localhost journalctl -u k-notify@app.service | grep -c Started)"
+    } >> "$1"
+    echo "killing app 10x..."
+    ssh root@localhost 'for i in $(seq 0 10); do pkill sleep; sleep 0.1; done'
+    sleep 1
+    {
+        echo "--- after 10x kills";
+        ssh root@localhost systemctl --failed;
+        echo "notify count: $(ssh root@localhost journalctl -u k-notify@app.service | grep -c Started)"
+    } >> "$1"
+}
+
+run test_basics
+
+run test_notify

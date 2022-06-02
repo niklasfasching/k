@@ -315,6 +315,7 @@ func notify(cmd string, a struct {
 	return sendTelegramMessage(xs[0], xs[1], xs[2], msg)
 }
 
+// reset failed not working with target?
 func serve(cmd string, x struct{ ConfigPath string }) error {
 	return server.Start(x.ConfigPath)
 }

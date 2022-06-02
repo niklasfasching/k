@@ -8,14 +8,28 @@ bin/k: $(shell find . -type f -name '*.go')
 	mkdir -p bin
 	go build -o bin/k ./cmd/k
 
+test:
+	./testdata/integration/run
+
+start-quiet:
+	sudo systemd-nspawn \
+		--machine k  \
+		--boot \
+		--ephemeral \
+		--directory $(machine_dir) \
+		--console pipe \
+		--quiet
+
 start:
 	sudo systemd-nspawn \
 		--machine k  \
 		--boot \
 		--ephemeral \
 		--bind "$(PWD):/k" \
-		--bind "$(PWD)/testdata/out:/usr/local/lib/systemd/system" \
 		--directory $(machine_dir)
+
+stop:
+	(sudo machinectl | grep "k " && sudo machinectl terminate k) || true
 
 ssh:
 	ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@localhost
@@ -36,11 +50,3 @@ machine:
 		mkdir -p ~/.ssh &&\
 		echo "$(shell cat ~/.ssh/id*.pub)" > ~/.ssh/authorized_keys &&\
 		sed "s@session\s*required\s*pam_loginuid.so@session optional pam_loginuid.so@g" -i /etc/pam.d/sshd'
-
-test-deploy:
-	@git init testdata/remote
-	@cd testdata/remote && git config receive.denyCurrentBranch updateInstead
-	@ln -rsf ./k testdata/remote/.git/hooks/update
-	go build ./cmd/k
-	git push ./testremote
-
