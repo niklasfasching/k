@@ -3,6 +3,11 @@
 machine_dir=/var/lib/machines/k-ubuntu
 ubuntu_release=impish
 
+build: bin/k
+bin/k: $(shell find . -type f -name '*.go')
+	mkdir -p bin
+	go build -o bin/k ./cmd/k
+
 start:
 	sudo systemd-nspawn \
 		--machine k  \
@@ -39,5 +44,3 @@ test-deploy:
 	go build ./cmd/k
 	git push ./testremote
 
-build:
-	go build ./cmd/k
