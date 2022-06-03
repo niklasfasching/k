@@ -99,7 +99,7 @@ func (c *C) renderInternals(dir string) error {
 	}
 	notifyService := Unit{
 		"Service": {
-			"ExecStart": fmt.Sprintf("%s notify --app %%i", exe),
+			"ExecStart": fmt.Sprintf("-%s notify --app %%i", exe),
 		},
 	}
 	if err := notifyService.render(dir, "k-notify@.service"); err != nil {
