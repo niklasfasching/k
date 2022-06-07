@@ -49,7 +49,7 @@ func getBuildVersion() string {
 	for _, s := range bi.Settings {
 		if s.Key == "vcs.revision" {
 			revision = s.Value[:6]
-		} else if s.Key == "vcs.modified" {
+		} else if s.Key == "vcs.modified" && s.Value == "true" {
 			dirty = fmt.Sprintf("-dirty-%d", time.Now().UnixNano())
 		}
 	}
