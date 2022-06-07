@@ -56,10 +56,14 @@ func getBuildVersion() string {
 	return fmt.Sprintf("%s%s", revision, dirty)
 }
 
-func loadConfig() (*config.C, error) {
+func loadConfig() (*config.C, string, error) {
 	dir := filepath.Join(root, configDir)
 	if v := os.Getenv("K_DIR"); v != "" {
 		dir = v
+	}
+	dir, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		return nil, "", fmt.Errorf("config: %w", err)
 	}
 	v := util.Vault(nil)
 	c, err := config.Load(dir, template.FuncMap{
@@ -74,12 +78,12 @@ func loadConfig() (*config.C, error) {
 		},
 	})
 	if err != nil {
-		return nil, fmt.Errorf("config: %w", err)
+		return nil, "", fmt.Errorf("config: %w", err)
 	}
 	if os.Getenv("DEV") != "" {
 		c.User, c.Host = "root", "localhost"
 	}
-	return c, nil
+	return c, dir, nil
 }
 
 func gitPush(c *config.C, dir, remote string) error {

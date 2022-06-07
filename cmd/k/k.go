@@ -105,11 +105,7 @@ func deploy(cmd string,
 	as struct {
 		App string `cli:"::"`
 	}) error {
-	c, err := loadConfig()
-	if err != nil {
-		return err
-	}
-	cDir, err := filepath.EvalSymlinks(filepath.Join(root, configDir))
+	c, cDir, err := loadConfig()
 	if err != nil {
 		return err
 	}
@@ -153,7 +149,7 @@ func deploy(cmd string,
 func systemctl(cmd string, x struct {
 	App string `cli:"::defaults to $cwd app"`
 }) error {
-	c, err := loadConfig()
+	c, _, err := loadConfig()
 	if err != nil {
 		return err
 	}
@@ -213,7 +209,7 @@ func version(cmd string) error {
 }
 
 func ls(cmd string) error {
-	c, err := loadConfig()
+	c, _, err := loadConfig()
 	if err != nil {
 		return err
 	}
@@ -241,7 +237,7 @@ func update(cmd string, x struct{ Ref, OldSHA, NewSHA string }) error {
           systemctl daemon-reload
           systemctl restart k-http.target`, exe)
 	} else {
-		c, err := loadConfig()
+		c, _, err := loadConfig()
 		if err != nil {
 			return err
 		}
@@ -290,7 +286,7 @@ func generate(cmd string, x struct {
 	Dir               string
 	EarlyDir, LateDir string `cli:"::"`
 }) error {
-	c, err := loadConfig()
+	c, _, err := loadConfig()
 	if err != nil {
 		return err
 	}
@@ -302,7 +298,7 @@ func notify(cmd string, a struct {
 }, f struct {
 	App string
 }) error {
-	c, err := loadConfig()
+	c, _, err := loadConfig()
 	if err != nil {
 		return err
 	}
@@ -324,7 +320,7 @@ func serve(cmd string, x struct{ ConfigPath string }) error {
 }
 
 func tunnel(cmd string, x struct{ LocalAddress string }) error {
-	c, err := loadConfig()
+	c, cDir, err := loadConfig()
 	if err != nil {
 		return err
 	}
@@ -339,10 +335,6 @@ func tunnel(cmd string, x struct{ LocalAddress string }) error {
 	if err := remoteInstallBinary(r, serverBin); err != nil {
 		return err
 	} else if _, err := util.SSHExec(r, "systemctl restart k-http", nil, false); err != nil {
-		return err
-	}
-	cDir, err := filepath.EvalSymlinks(filepath.Join(root, configDir))
-	if err != nil {
 		return err
 	}
 	if err := gitPush(c, cDir, configDir); err != nil {
@@ -361,7 +353,7 @@ func tunnel(cmd string, x struct{ LocalAddress string }) error {
 
 func completeApps(args []string) []string {
 	completions := []string{}
-	c, err := loadConfig()
+	c, _, err := loadConfig()
 	if err != nil {
 		return nil
 	}
