@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
-	"os"
 	"path/filepath"
 	"strings"
 	"text/template"
@@ -60,9 +59,6 @@ func LogHandler(next http.Handler, format string,
 }
 
 func StaticHandler(root string) (http.Handler, error) {
-	if f, err := os.Stat(root); err != nil || !f.IsDir() {
-		return nil, fmt.Errorf("root must be a directory: %s", err)
-	}
 	fs := &fs{http.FileSystem(http.Dir(root))}
 	return http.FileServer(fs), nil
 }
