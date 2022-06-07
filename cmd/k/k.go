@@ -112,17 +112,21 @@ func deploy(cmd string,
 	if err != nil {
 		return err
 	}
+	if fs.Dev {
+		c.User, c.Host = "root", "localhost"
+	}
+	cDir, err := filepath.EvalSymlinks(filepath.Join(root, configDir))
+	if err != nil {
+		return err
+	}
 	name := as.App
 	if as.App == "" {
 		if name, err = getAppName(); err != nil {
 			return err
 		}
 	}
-	if app := c.Apps[name]; app == nil {
+	if name != filepath.Base(cDir) && c.Apps[name] == nil {
 		return fmt.Errorf("'%s' is not a valid app", name)
-	}
-	if fs.Dev {
-		c.User, c.Host = "root", "localhost"
 	}
 	s, err := util.SSH(c.User, c.Host)
 	if err != nil {
@@ -136,17 +140,13 @@ func deploy(cmd string,
 		filepath.Join(serverRoot, keyFile)); err != nil {
 		return err
 	}
-	cDir, err := filepath.EvalSymlinks(filepath.Join(root, configDir))
-	if err != nil {
-		return err
-	}
 	if err := gitPush(c, cDir, configDir); err != nil {
 		return err
 	}
-	if err := gitPush(c, filepath.Join(cDir, "..", name), name); err != nil {
-		return err
+	if name == filepath.Base(cDir) {
+		return nil
 	}
-	return nil
+	return gitPush(c, filepath.Join(cDir, "..", name), name)
 }
 
 func systemctl(cmd string, x struct {
