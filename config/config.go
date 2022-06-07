@@ -75,6 +75,13 @@ func (c *C) Render(dir string) error {
 
 func (c *C) renderInternals(dir string) error {
 	sc, reqs := c.Server, []string{}
+	for _, r := range c.Server.Routes {
+		if r.LogFields == nil {
+			r.LogFields = map[string]string{}
+		}
+		r.LogFields["K"] = "k-custom"
+		r.LogFields["SYSLOG_IDENTIFIER"] = "k-custom"
+	}
 	for name, a := range c.Apps {
 		reqs = append(reqs, name+".target")
 		for _, r := range a.Routes {
