@@ -104,16 +104,10 @@ func decrypt(cmd string, args struct{ CipherText string }) error {
 func deploy(cmd string,
 	as struct {
 		App string `cli:"::"`
-	},
-	fs struct {
-		Dev bool
 	}) error {
 	c, err := loadConfig()
 	if err != nil {
 		return err
-	}
-	if fs.Dev {
-		c.User, c.Host = "root", "localhost"
 	}
 	cDir, err := filepath.EvalSymlinks(filepath.Join(root, configDir))
 	if err != nil {
