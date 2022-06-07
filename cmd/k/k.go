@@ -220,7 +220,7 @@ func ls(cmd string) error {
 	sort.Strings(as)
 	log.Println("Apps:")
 	for _, a := range as {
-		log.Println("\t- " + a)
+		log.Println("  - " + a)
 	}
 	return nil
 }
