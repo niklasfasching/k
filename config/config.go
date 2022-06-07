@@ -28,9 +28,9 @@ type Tunnel struct {
 }
 
 type App struct {
-	Units  Units
-	Routes []*server.Route
-	Build  string
+	Units         Units
+	Routes        []*server.Route
+	Build, Deploy *string
 }
 
 type Units map[string]Unit
@@ -244,16 +244,27 @@ func parseApps(dir string, fns template.FuncMap, vars interface{}) (map[string]*
 		if name == "k" {
 			continue
 		}
-		a := &App{}
-		bs, err := readTemplate(f, fns, vars)
+		a, err := parseApp(f, name, fns, vars)
 		if err != nil {
-			return nil, err
-		} else if err := jml.Unmarshal(bs, a); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("%s: %w", f, err)
 		}
 		as[name] = a
 	}
 	return as, nil
+}
+
+func parseApp(f, name string, fns template.FuncMap, vars interface{}) (*App, error) {
+	a := &App{}
+	bs, err := readTemplate(f, fns, vars)
+	if err != nil {
+		return nil, err
+	} else if err := jml.Unmarshal(bs, a); err != nil {
+		return nil, err
+	}
+	if a.Build != nil && a.Deploy != nil {
+		return nil, fmt.Errorf(".Build and .Deploy cannot be used in combination")
+	}
+	return a, nil
 }
 
 func mergeUnits(a, b Unit) Unit {

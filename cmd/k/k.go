@@ -146,6 +146,13 @@ func deploy(cmd string,
 	if name == filepath.Base(cDir) {
 		return nil
 	}
+	if a := c.Apps[name]; a.Deploy != nil {
+		if _, err := util.Exec(`set -x;`+*a.Deploy, nil, false); err != nil {
+			return err
+		}
+		_, err := util.SSHExec(s, fmt.Sprintf(`systemctl restart %s.target`, name), nil, false)
+		return err
+	}
 	return gitPush(c, filepath.Join(cDir, "..", name), name)
 }
 
@@ -235,7 +242,10 @@ func update(cmd string, x struct{ Ref, OldSHA, NewSHA string }) error {
 	} else if exe, err := os.Executable(); err != nil {
 		return err
 	} else if name := filepath.Base(filepath.Dir(dir)); name == configDir {
-		script = fmt.Sprintf(`%s generate /run/k && systemctl daemon-reload`, exe)
+		script = fmt.Sprintf(`
+          %s generate /run/k
+          systemctl daemon-reload
+          systemctl restart k-http.target`, exe)
 	} else {
 		c, err := loadConfig()
 		if err != nil {
@@ -247,8 +257,7 @@ func update(cmd string, x struct{ Ref, OldSHA, NewSHA string }) error {
 		}
 		script = fmt.Sprintf(`
           %s
-          systemctl daemon-reload
-          systemctl restart k-http.target %s.target`, a.Build, name)
+          systemctl restart %s.target`, *a.Build, name)
 	}
 	// hook executes inside .git/ and hardcodes 'GIT_DIR=.'; we have to unset it when cd'ing
 	// git hooks don't source /etc/environment by themselves

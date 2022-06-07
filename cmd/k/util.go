@@ -74,7 +74,7 @@ func loadConfig() (*config.C, error) {
 		},
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("config: %w", err)
 	}
 	if os.Getenv("DEV") != "" {
 		c.User, c.Host = "root", "localhost"
