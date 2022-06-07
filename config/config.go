@@ -93,7 +93,11 @@ func (c *C) renderInternals(dir string) error {
 			LogFields: map[string]string{"SYSLOG_IDENTIFIER": "k-http"},
 		})
 	}
-	exe, err := filepath.EvalSymlinks(os.Args[0])
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	exe, err = filepath.EvalSymlinks(exe)
 	if err != nil {
 		return err
 	}
