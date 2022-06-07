@@ -93,7 +93,6 @@ Apr 21 00:45:28 localhost systemd[1]: Listening on k-https.socket.
 - k.yaml
   - systemd unit defaults
   - default variables
-- test setup with nested git directories
 - vm management
   - ssh: ssh-copy-id + sshd config
     #+begin_src bash
