@@ -2,6 +2,8 @@ package main
 
 import (
 	"bufio"
+	"crypto/ed25519"
+	"crypto/rand"
 	"fmt"
 	"log"
 	"os"
@@ -32,6 +34,7 @@ var api = cli.API{
 	"deploy":   {F: deploy, Desc: "git push config & app repo's", Complete: completeApps},
 	"encrypt":  {F: encrypt, Desc: "encrypt the provided <value>"},
 	"decrypt":  {F: decrypt, Desc: "decrypt the provided <value>"},
+	"sign":     {F: sign, Desc: "sign the provided <file>"},
 	"generate": {F: generate, Desc: "-"},
 	"receive":  {F: receive, Desc: "-"},
 	"update":   {F: update, Desc: "-"},
@@ -44,6 +47,7 @@ var root = clientRoot
 var serverBin = filepath.Join(serverRoot, ".k")
 var configDir = ".config"
 var keyFile = ".key"
+var signKeyFile = ".signKey"
 
 func init() {
 	if kRoot := os.Getenv("K_ROOT"); kRoot != "" {
@@ -99,6 +103,29 @@ func decrypt(cmd string, args struct{ CipherText string }) error {
 	}
 	log.Printf(s)
 	return nil
+}
+
+func sign(cmd string, args struct{ File, SigFile string }) error {
+	keyFile := filepath.Join(root, signKeyFile)
+	kbs, err := os.ReadFile(keyFile)
+	if err != nil {
+		_, k, err := ed25519.GenerateKey(rand.Reader)
+		if err != nil {
+			return fmt.Errorf("generate key: %w", err)
+		}
+		if err := os.WriteFile(keyFile, k, 0600); err != nil {
+			return fmt.Errorf("write key: %w", err)
+		}
+		kbs = k
+	}
+	k := ed25519.PrivateKey(kbs)
+	bs, err := os.ReadFile(args.File)
+	if err != nil {
+		return fmt.Errorf("read file: %w", err)
+	}
+	sig := ed25519.Sign(k, bs)
+	log.Printf("signature: %x\npublic key: %x\n  (verify with ed25519.Verify)", sig, k.Public())
+	return os.WriteFile(args.SigFile, sig, 0644)
 }
 
 func deploy(cmd string,
