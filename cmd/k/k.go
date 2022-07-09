@@ -272,9 +272,10 @@ func update(cmd string, x struct{ Ref, OldSHA, NewSHA string }) error {
 		if !ok {
 			return fmt.Errorf("app '%s' does not exist", name)
 		}
-		script = fmt.Sprintf(`
-          %s
-          systemctl restart %s.target`, *a.Build, name)
+		if a.Build != nil {
+			script += *a.Build + "\n"
+		}
+		script += fmt.Sprintf(`systemctl restart %s.target`, name)
 	}
 	// hook executes inside .git/ and hardcodes 'GIT_DIR=.'; we have to unset it when cd'ing
 	// git hooks don't source /etc/environment by themselves
