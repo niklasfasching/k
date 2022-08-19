@@ -164,7 +164,10 @@ func deploy(cmd string,
 		return nil
 	}
 	if a := c.Apps[name]; a.Deploy != nil {
-		if _, err := util.Exec(`set -x;`+*a.Deploy, nil, false); err != nil {
+		remoteDir := filepath.Join(serverRoot, name)
+		if _, err := util.SSHExec(s, fmt.Sprintf(`mkdir -p %s`, remoteDir), nil, false); err != nil {
+			return err
+		} else if _, err := util.Exec(`set -x;`+*a.Deploy, nil, false); err != nil {
 			return err
 		}
 		_, err := util.SSHExec(s, fmt.Sprintf(`systemctl restart %s.target`, name), nil, false)
