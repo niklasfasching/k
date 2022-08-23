@@ -145,6 +145,14 @@ func deploy(cmd string,
 	if name != filepath.Base(cDir) && c.Apps[name] == nil {
 		return fmt.Errorf("'%s' is not a valid app", name)
 	}
+
+	aDir := filepath.Join(cDir, "..", name)
+	if err := assertGitClean(cDir); err != nil {
+		return err
+	} else if err := assertGitClean(aDir); err != nil {
+		return err
+	}
+
 	s, err := util.SSH(c.User, c.Host)
 	if err != nil {
 		return err
@@ -173,7 +181,7 @@ func deploy(cmd string,
 		_, err := util.SSHExec(s, fmt.Sprintf(`systemctl restart %s.target`, name), nil, false)
 		return err
 	}
-	return gitPush(c, filepath.Join(cDir, "..", name), name)
+	return gitPush(c, aDir, name)
 }
 
 func systemctl(cmd string, x struct {

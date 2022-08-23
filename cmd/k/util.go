@@ -87,18 +87,25 @@ func loadConfig() (*config.C, string, error) {
 }
 
 func gitPush(c *config.C, dir, remote string) error {
-	log.Printf("Pushing %s:", filepath.Base(dir))
-	if fs, err := os.Stat(filepath.Join(dir, ".git")); err != nil || !fs.IsDir() {
-		return fmt.Errorf("not a git repository")
-	} else if out, err := util.Exec(`[[ -z $(cd $dir && git status --porcelain) ]] && echo clean`,
-		map[string]string{"dir": dir}, true); err != nil || out != "clean" {
-		return fmt.Errorf("has uncommitted changes")
+	if err := assertGitClean(dir); err != nil {
+		return err
 	}
+	log.Printf("Pushing %s:", filepath.Base(dir))
 	url := fmt.Sprintf("ssh://%s@%s:/receive/%s", c.User, c.Host, filepath.Join(serverRoot, remote))
 	// push to non-existant remote to ensure git hooks run even when nothing changed
 	_, err := util.Exec(`cd $dir && git push "$url" --receive-pack="$exe" master:$(date +%s) --force`,
 		map[string]string{"dir": dir, "url": url, "exe": serverBin}, false)
 	return err
+}
+
+func assertGitClean(dir string) error {
+	if fs, err := os.Stat(filepath.Join(dir, ".git")); err != nil || !fs.IsDir() {
+		return fmt.Errorf("%s is not a git repository", filepath.Base(dir))
+	} else if out, err := util.Exec(`[[ -z $(cd $dir && git status --porcelain) ]] && echo clean`,
+		map[string]string{"dir": dir}, true); err != nil || out != "clean" {
+		return fmt.Errorf("%s has uncommitted changes", filepath.Base(dir))
+	}
+	return nil
 }
 
 func getAppName() (string, error) {
