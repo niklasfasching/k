@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bufio"
 	"crypto/subtle"
 	"fmt"
 	"net"
@@ -30,6 +31,8 @@ type responseWriter struct {
 	req      *http.Request
 	http.ResponseWriter
 }
+
+var _ http.Hijacker = (*responseWriter)(nil)
 
 var ipv4Mask = net.CIDRMask(16, 32)  // 255.255.0.0
 var ipv6Mask = net.CIDRMask(56, 128) // ffff:ffff:ffff:ff00::
@@ -104,6 +107,10 @@ func (r *responseWriter) Write(bytes []byte) (count int, err error) {
 	count, err = r.ResponseWriter.Write(bytes)
 	r.count += count
 	return count, err
+}
+
+func (r *responseWriter) Hijack() (c net.Conn, b *bufio.ReadWriter, err error) {
+	return r.ResponseWriter.(http.Hijacker).Hijack()
 }
 
 func (r *responseWriter) WriteHeader(status int) {
