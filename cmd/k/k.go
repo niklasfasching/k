@@ -329,7 +329,11 @@ func generate(cmd string, x struct {
 	if err != nil {
 		return err
 	}
-	return c.Render(x.Dir)
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	return c.Render(x.Dir, exe)
 }
 
 func notify(cmd string, a struct {

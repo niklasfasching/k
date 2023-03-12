@@ -1,0 +1,55 @@
+{
+  "Vars": null,
+  "User": "root",
+  "Host": "localhost",
+  "Server": {
+    "HTTP": 80,
+    "HTTPS": 443,
+    "LetsEncryptEmail": "your.email@localhost",
+    "LetsEncryptCachePath": "/var/cache/k-http/autocert-cache",
+    "Routes": null
+  },
+  "Tunnel": {
+    "Pattern": "",
+    "Address": "localhost:9999"
+  },
+  "Apps": {
+    "app": {
+      "Units": {
+        "app.service": {
+          "Service": {
+            "Environment": "foo=bar",
+            "ExecStart": "/opt/k/app/main",
+            "Restart": "always",
+            "WorkingDirectory": "/var/lib/app/"
+          }
+        }
+      },
+      "Routes": [
+        {
+          "Patterns": [
+            "app.example.com/"
+          ],
+          "Target": "http://localhost:9001",
+          "BasicAuth": {
+            "User": "",
+            "Password": "",
+            "Realm": ""
+          },
+          "LogFormat": "",
+          "LogFields": {
+            "K": "app",
+            "SYSLOG_IDENTIFIER": "k-http"
+          },
+          "ErrPaths": null
+        }
+      ],
+      "Build": "PATH=~/go/bin:$PATH make build",
+      "Deploy": null,
+      "Env": {
+        "KEY1": "VALUE1",
+        "KEY2": "VALUE2"
+      }
+    }
+  }
+}

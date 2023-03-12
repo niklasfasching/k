@@ -20,7 +20,7 @@ type C struct {
 	User, Host string
 	Server     server.Config
 	Tunnel     Tunnel
-	Apps       map[string]*App `json:"-"`
+	Apps       map[string]*App
 }
 
 type Tunnel struct {
@@ -31,11 +31,12 @@ type App struct {
 	Units         Units
 	Routes        []*server.Route
 	Build, Deploy *string
+	Env           map[string]string
 }
 
 type Units map[string]Unit
 type Unit map[string]Section
-type Section map[string]interface{}
+type Section map[string]any
 
 var kFile = "k.yaml"
 
@@ -64,16 +65,31 @@ func Load(dir string, fns template.FuncMap) (*C, error) {
 	return c, err
 }
 
-func (c *C) Render(dir string) error {
+func (c *C) Render(dir, exe string) error {
 	for name, a := range c.Apps {
 		if err := a.Units.render(dir, name); err != nil {
 			return err
 		}
+		if err := c.renderEnvFile(dir, name, a.Env); err != nil {
+			return err
+		}
 	}
-	return c.renderInternals(dir)
+	return c.renderInternals(dir, exe)
 }
 
-func (c *C) renderInternals(dir string) error {
+func (c *C) renderEnvFile(dir, appName string, env map[string]string) error {
+	s, keys := &strings.Builder{}, []string{}
+	for k := range env {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		fmt.Fprintf(s, "%s=%s\n", k, env[k])
+	}
+	return writeFile(fmt.Sprintf("%s/k/%s.env", dir, appName), s.String(), 0600)
+}
+
+func (c *C) renderInternals(dir, exe string) error {
 	sc, reqs := c.Server, []string{}
 	for _, r := range c.Server.Routes {
 		if r.LogFields == nil {
@@ -100,11 +116,7 @@ func (c *C) renderInternals(dir string) error {
 			LogFields: map[string]string{"SYSLOG_IDENTIFIER": "k-http"},
 		})
 	}
-	exe, err := os.Executable()
-	if err != nil {
-		return err
-	}
-	exe, err = filepath.EvalSymlinks(exe)
+	exe, err := filepath.EvalSymlinks(exe)
 	if err != nil {
 		return err
 	}
@@ -133,7 +145,7 @@ func (c *C) renderInternals(dir string) error {
 		},
 		"k-http.service": {
 			"Service": {
-				"ExecStart": fmt.Sprintf(`%s serve ${K_RUN_DIR}/server.json`, exe),
+				"ExecStart": fmt.Sprintf(`%s serve ${K_RUN_DIR}/k-http.json`, exe),
 				"Restart":   "always",
 			},
 		},
@@ -141,12 +153,16 @@ func (c *C) renderInternals(dir string) error {
 	if err := httpServer.render(dir, "k-http"); err != nil {
 		return err
 	}
-	serverConfigPath := filepath.Join(dir, "k", "server.json")
-	if bs, err := json.MarshalIndent(sc, "", "  "); err != nil {
-		return err
-	} else if err := writeFile(serverConfigPath, string(bs)); err != nil {
+	if err := writeFile(fmt.Sprintf("%s/k/k-http.env", dir), "", 0600); err != nil {
 		return err
 	}
+	serverConfigPath := filepath.Join(dir, "k", "k-http.json")
+	if bs, err := json.MarshalIndent(sc, "", "  "); err != nil {
+		return err
+	} else if err := writeFile(serverConfigPath, string(bs), 0644); err != nil {
+		return err
+	}
+	sort.Strings(reqs)
 	t := Unit{
 		"Unit": {
 			"After":    "network-online.target",
@@ -156,7 +172,7 @@ func (c *C) renderInternals(dir string) error {
 	if err := t.render(dir, "k.target"); err != nil {
 		return err
 	}
-	return writeSymlink(filepath.Join(dir, "k.target"),
+	return writeSymlink(filepath.Join("..", "k.target"),
 		filepath.Join(dir, "multi-user.target.wants", "k.target"))
 }
 
@@ -170,11 +186,12 @@ func (us Units) render(dir, appName string) error {
 			u = mergeUnits(Unit{
 				"Service": {
 					"SyslogIdentifier": name,
-					"LogExtraFields":   "K=" + appName,
+					"LogExtraFields":   []any{"K=" + appName},
 					"DynamicUser":      "true",
 					"StateDirectory":   name,
 					"CacheDirectory":   name,
-					"Environment":      fmt.Sprintf("K_RUN_DIR=%s/k", dir),
+					"Environment":      []any{fmt.Sprintf("K_RUN_DIR=%s/k", dir)},
+					"EnvironmentFile":  []any{fmt.Sprintf("%s/k/%s.env", dir, appName)},
 					"Restart":          "always",
 				},
 			}, u)
@@ -183,6 +200,7 @@ func (us Units) render(dir, appName string) error {
 			return err
 		}
 	}
+	sort.Strings(reqs)
 	t := Unit{
 		"Unit": {
 			"Requires":  strings.Join(reqs, " "),
@@ -204,7 +222,7 @@ func (u Unit) render(dir, name string) error {
 				sm[k] += fmt.Sprintf("%s=\n", k)
 			case string, bool, int, float64:
 				sm[k] += fmt.Sprintf("%s=%v\n", k, v)
-			case []interface{}:
+			case []any:
 				for _, v := range v {
 					switch v := v.(type) {
 					case nil:
@@ -230,7 +248,7 @@ func (u Unit) render(dir, name string) error {
 		s += fmt.Sprintf("[%s]\n", section)
 		s += um[section] + "\n"
 	}
-	return writeFile(filepath.Join(dir, name), s)
+	return writeFile(filepath.Join(dir, name), s, 0644)
 }
 
 func parseApps(dir string, fns template.FuncMap, vars interface{}) (map[string]*App, error) {
@@ -273,7 +291,15 @@ func mergeUnits(a, b Unit) Unit {
 			a[name] = section
 		} else {
 			for k, v := range section {
-				a[name][k] = v
+				if _, ok := a[name][k].([]any); ok {
+					vs, ok := v.([]any)
+					if !ok {
+						vs = []any{v}
+					}
+					a[name][k] = append(a[name][k].([]any), vs...)
+				} else {
+					a[name][k] = v
+				}
 			}
 		}
 	}
@@ -294,22 +320,14 @@ func readTemplate(path string, fns template.FuncMap, v interface{}) ([]byte, err
 	return w.Bytes(), err
 }
 
-func writeFile(path, content string) error {
+func writeFile(path, content string, mode os.FileMode) error {
 	if err := os.MkdirAll(filepath.Dir(path), os.ModePerm); err != nil {
 		return err
 	}
-	return os.WriteFile(path, []byte(content), 0644)
+	return os.WriteFile(path, []byte(content), mode)
 }
 
 func writeSymlink(oldname, newname string) error {
-	newname, err := filepath.Abs(newname)
-	if err != nil {
-		return err
-	}
-	oldname, err = filepath.Abs(oldname)
-	if err != nil {
-		return err
-	}
 	if err := os.MkdirAll(filepath.Dir(newname), os.ModePerm); err != nil {
 		return err
 	} else if err := os.Remove(newname); err != nil && !os.IsNotExist(err) {

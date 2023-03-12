@@ -1,0 +1,15 @@
+Build: "PATH=~/go/bin:$PATH make build"
+Routes:
+  - Patterns:
+      - "app.example.com/"
+    Target: "http://localhost:9001"
+Env:
+  KEY1: "VALUE1"
+  KEY2: "VALUE2"
+Units:
+  app.service:
+    Service:
+      ExecStart: "/opt/k/app/main"
+      Restart: "always"
+      WorkingDirectory: "/var/lib/app/"
+      Environment: "foo=bar"
