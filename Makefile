@@ -8,6 +8,9 @@ bin/k: $(shell find . -type f -name '*.go')
 	mkdir -p bin
 	go build -o bin/k ./cmd/k
 
+install:
+	go install ./cmd/k
+
 test:
 	./testdata/integration/run
 
