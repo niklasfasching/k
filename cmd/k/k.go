@@ -204,7 +204,7 @@ func systemctl(cmd string, x struct {
 	defer s.Close()
 	script := fmt.Sprintf("systemctl %s %s", cmd, unit)
 	if cmd == "logs" {
-		script = fmt.Sprintf("journalctl K=%s", unit)
+		script = fmt.Sprintf("journalctl K=%s -f", unit)
 	} else if cmd == "status" {
 		if filepath.Ext(unit) == "" {
 			script += ".target"
