@@ -13,9 +13,11 @@ import (
 
 	"github.com/niklasfasching/k/jml"
 	"github.com/niklasfasching/k/server"
+	"github.com/niklasfasching/k/util"
 )
 
 type C struct {
+	Dir        string
 	Vars       map[string]interface{}
 	User, Host string
 	Server     server.Config
@@ -32,6 +34,7 @@ type App struct {
 	Routes        []*server.Route
 	Build, Deploy *string
 	Env           map[string]string
+	Dependencies  []string
 }
 
 type Units map[string]Unit
@@ -41,7 +44,12 @@ type Section map[string]any
 var kFile = "k.yaml"
 
 func Load(dir string, fns template.FuncMap) (*C, error) {
+	dir, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		return nil, err
+	}
 	c := &C{
+		Dir:  dir,
 		User: "root",
 		Tunnel: Tunnel{
 			Address: "localhost:9999",
@@ -116,10 +124,6 @@ func (c *C) renderInternals(dir, exe string) error {
 			LogFields: map[string]string{"SYSLOG_IDENTIFIER": "k-http"},
 		})
 	}
-	exe, err := filepath.EvalSymlinks(exe)
-	if err != nil {
-		return err
-	}
 	notifyService := Unit{
 		"Service": {
 			"ExecStart": fmt.Sprintf("-%s notify --app %%i", exe),
@@ -145,7 +149,7 @@ func (c *C) renderInternals(dir, exe string) error {
 		},
 		"k-http.service": {
 			"Service": {
-				"ExecStart": fmt.Sprintf(`%s serve ${K_RUN_DIR}/k-http.json`, exe),
+				"ExecStart": fmt.Sprintf(`%s serve ${K_CONFIG_DIR}/k/k-http.json`, exe),
 				"Restart":   "always",
 			},
 		},
@@ -157,6 +161,7 @@ func (c *C) renderInternals(dir, exe string) error {
 		return err
 	}
 	serverConfigPath := filepath.Join(dir, "k", "k-http.json")
+	sort.Slice(sc.Routes, func(i, j int) bool { return sc.Routes[i].Target < sc.Routes[j].Target })
 	if bs, err := json.MarshalIndent(sc, "", "  "); err != nil {
 		return err
 	} else if err := writeFile(serverConfigPath, string(bs), 0644); err != nil {
@@ -172,10 +177,11 @@ func (c *C) renderInternals(dir, exe string) error {
 	if err := t.render(dir, "k.target"); err != nil {
 		return err
 	}
-	return writeSymlink(filepath.Join("..", "k.target"),
+	return util.WriteSymlink(filepath.Join("..", "k.target"),
 		filepath.Join(dir, "multi-user.target.wants", "k.target"))
 }
 
+// TODO: use %y for K_CONFIG_DIR in 251/ubuntu 24 https://github.com/systemd/systemd/pull/22195
 func (us Units) render(dir, appName string) error {
 	target, reqs := appName+".target", []string{}
 	for name, u := range us {
@@ -190,8 +196,8 @@ func (us Units) render(dir, appName string) error {
 					"DynamicUser":      "true",
 					"StateDirectory":   name,
 					"CacheDirectory":   name,
-					"Environment":      []any{fmt.Sprintf("K_RUN_DIR=%s/k", dir)},
-					"EnvironmentFile":  []any{fmt.Sprintf("%s/k/%s.env", dir, appName)},
+					"Environment":      []any{"K_CONFIG_DIR=/opt/k/_"},
+					"EnvironmentFile":  []any{fmt.Sprintf("/opt/k/_/k/%s.env", appName)},
 					"Restart":          "always",
 				},
 			}, u)
@@ -268,7 +274,27 @@ func parseApps(dir string, fns template.FuncMap, vars interface{}) (map[string]*
 		}
 		as[name] = a
 	}
+	for name := range as {
+		if err := checkDeps(name, as, map[string]int{name: 1}); err != nil {
+			return nil, err
+		}
+	}
 	return as, nil
+}
+
+func checkDeps(name string, as map[string]*App, deps map[string]int) error {
+	for _, name := range as[name].Dependencies {
+		if _, ok := as[name]; !ok {
+			return fmt.Errorf("unknown dependency: %q", name)
+		} else if deps[name] != 0 {
+			return fmt.Errorf("recursive dependency: %q", name)
+		}
+		deps[name]++
+		if err := checkDeps(name, as, deps); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func parseApp(f, name string, fns template.FuncMap, vars interface{}) (*App, error) {
@@ -321,17 +347,8 @@ func readTemplate(path string, fns template.FuncMap, v interface{}) ([]byte, err
 }
 
 func writeFile(path, content string, mode os.FileMode) error {
-	if err := os.MkdirAll(filepath.Dir(path), os.ModePerm); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return err
 	}
 	return os.WriteFile(path, []byte(content), mode)
-}
-
-func writeSymlink(oldname, newname string) error {
-	if err := os.MkdirAll(filepath.Dir(newname), os.ModePerm); err != nil {
-		return err
-	} else if err := os.Remove(newname); err != nil && !os.IsNotExist(err) {
-		return err
-	}
-	return os.Symlink(oldname, newname)
 }

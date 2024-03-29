@@ -34,6 +34,7 @@ func (a API) Run(cmd string, args []string) error {
 }
 
 func (a API) complete(args []string) error {
+	log.SetOutput(os.Stdout)
 	if len(args) == 0 {
 		script := fmt.Sprintf(`
           function _complete_%[1]s() {

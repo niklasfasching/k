@@ -39,7 +39,7 @@ func SCP(c *ssh.Client, localPath, remotePath string) error {
 		return err
 	}
 	defer f.Close()
-	fs, err := f.Stat()
+	fi, err := f.Stat()
 	if err != nil {
 		return err
 	}
@@ -47,7 +47,6 @@ func SCP(c *ssh.Client, localPath, remotePath string) error {
 	if err != nil {
 		return err
 	}
-	// scp does not allow writing busy files; mv to the rescue
 	g := errgroup.Group{}
 	g.Go(func() error {
 		w, err := s.StdinPipe()
@@ -55,26 +54,20 @@ func SCP(c *ssh.Client, localPath, remotePath string) error {
 			return err
 		}
 		defer w.Close()
-		defer w.Close()
-		fmt.Fprintf(w, "C%#o %d %s\n", fs.Mode(), fs.Size(), filepath.Base(remotePath)+".tmp")
+		// since scp does not allow writing to busy files we'll scp + mv
+		fmt.Fprintf(w, "C%#o %d %s\n", fi.Mode(), fi.Size(), filepath.Base(remotePath)+".tmp")
 		_, err = io.Copy(w, f)
 		fmt.Fprint(w, "\x00")
 		return err
 	})
 	g.Go(func() error {
-		return s.Run(fmt.Sprintf(`mkdir -p '%[1]s' && scp -t '%[1]s'`, filepath.Dir(remotePath)))
+		return s.Run(fmt.Sprintf(`mkdir -p '%[1]s' && scp -t '%[1]s' && mv '%[2]s.tmp' '%[2]s'`,
+			filepath.Dir(remotePath), remotePath))
 	})
-	if err := g.Wait(); err != nil {
-		return err
-	}
-	s, err = c.NewSession()
-	if err != nil {
-		return err
-	}
-	return s.Run(fmt.Sprintf(`mv '%[1]s.tmp' '%[1]s'`, remotePath))
+	return g.Wait()
 }
 
-func SSHExec(c *ssh.Client, script string, env map[string]string, capture bool) (string, error) {
+func SSHExec(c *ssh.Client, script string, capture bool, env ...string) (string, error) {
 	script = shellPreamble(env) + script
 	s, err := c.NewSession()
 	if err != nil {
@@ -88,8 +81,8 @@ func SSHExec(c *ssh.Client, script string, env map[string]string, capture bool) 
 	return "", s.Run(script)
 }
 
-func ReverseTunnel(r *ssh.Client, localAddr, remoteAddr string) error {
-	rl, err := r.Listen("tcp", remoteAddr)
+func ReverseTunnel(sc *ssh.Client, localAddr, remoteAddr string) error {
+	rl, err := sc.Listen("tcp", remoteAddr)
 	if err != nil {
 		return err
 	}
@@ -111,4 +104,12 @@ func ReverseTunnel(r *ssh.Client, localAddr, remoteAddr string) error {
 			io.Copy(lc, rc)
 		}()
 	}
+}
+
+func shellPreamble(kvs []string) string {
+	preamble := "set -euo pipefail;\n"
+	for i := 0; i < len(kvs); i += 2 {
+		preamble += fmt.Sprintf("%s=\"%s\"\n", kvs[i], kvs[i+1])
+	}
+	return preamble
 }

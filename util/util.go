@@ -8,8 +8,7 @@ import (
 	"io"
 	"log"
 	"os"
-	ex "os/exec"
-	"strings"
+	"path/filepath"
 	"syscall"
 
 	"golang.org/x/crypto/nacl/secretbox"
@@ -18,17 +17,6 @@ import (
 )
 
 type Vault []byte
-
-func Exec(script string, env map[string]string, capture bool) (string, error) {
-	script = shellPreamble(env) + script
-	cmd := ex.Command("bash", "-c", script)
-	if capture {
-		bs, err := cmd.CombinedOutput()
-		return strings.TrimSpace(string(bs)), err
-	}
-	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
-	return "", cmd.Run()
-}
 
 func OpenVault(path string, createIfMissing bool) (Vault, error) {
 	bs, err := os.ReadFile(path)
@@ -57,6 +45,9 @@ func OpenVault(path string, createIfMissing bool) (Vault, error) {
 	   the passphrase anyways; just using a static salt. */
 	salt := []byte{47, 239, 236, 171, 92, 171, 148, 211}
 	k := pbkdf2.Key(pass, salt, 4096, 32, sha1.New) // from docstring
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return nil, err
+	}
 	return k, os.WriteFile(path, k, 0600)
 }
 
@@ -85,10 +76,11 @@ func (v Vault) Decrypt(ciphertext string) (string, error) {
 	return string(plaintext), nil
 }
 
-func shellPreamble(env map[string]string) string {
-	preamble := "set -euo pipefail;\n"
-	for k, v := range env {
-		preamble += fmt.Sprintf("%s=\"%s\"\n", k, v)
+func WriteSymlink(oldname, newname string) error {
+	if err := os.MkdirAll(filepath.Dir(newname), 0755); err != nil {
+		return err
+	} else if err := os.RemoveAll(newname); err != nil {
+		return err
 	}
-	return preamble
+	return os.Symlink(oldname, newname)
 }

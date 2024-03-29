@@ -9,7 +9,7 @@ import (
 )
 
 func TestConfig(t *testing.T) {
-	if err := os.Mkdir("testdata/tmp", os.ModePerm); err != nil {
+	if err := os.Mkdir("testdata/tmp", 0755); err != nil {
 		t.Fatalf("failed to created tmp dir: %s", err)
 	}
 	defer os.RemoveAll("testdata/tmp")

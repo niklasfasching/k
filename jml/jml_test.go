@@ -48,7 +48,7 @@ func TestJML(t *testing.T) {
 func compare(t *testing.T, path, actual string) {
 	if os.Getenv("UPDATE") != "" {
 		t.Log("updating", path)
-		if err := os.WriteFile(path, []byte(actual), os.ModePerm); err != nil {
+		if err := os.WriteFile(path, []byte(actual), 0755); err != nil {
 			t.Fatal(err)
 		}
 	} else {

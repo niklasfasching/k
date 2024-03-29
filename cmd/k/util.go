@@ -5,38 +5,38 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"runtime/debug"
-	"strings"
 	"text/template"
 	"time"
 
 	"github.com/niklasfasching/k/config"
 	"github.com/niklasfasching/k/util"
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/sync/errgroup"
 )
 
 func remoteInstallBinary(c *ssh.Client, binPath string) error {
-	if rv, err := util.SSHExec(c, fmt.Sprintf("%s version || true", binPath), nil, true); err != nil {
+	exe, err := os.Executable()
+	if err != nil {
 		return err
-	} else if v := getBuildVersion(); rv != v || v == "" {
-		if !strings.Contains(rv, "not found") {
-			log.Printf("k version mismatch: client='%s', server='%s'", v, rv)
-		}
-		log.Println("Copying k binary to server...")
-		if exe, err := os.Executable(); err != nil {
-			return err
-		} else if err := util.SCP(c, exe, binPath); err != nil {
-			return err
-		}
 	}
-	_, err := util.SSHExec(c, `
-      mkdir -p /etc/systemd/system-generators
-      ln -drsf $k /etc/systemd/system-generators/k-generator`,
-		map[string]string{"k": binPath}, false)
+	fi, err := os.Stat(exe)
+	if err != nil {
+		return err
+	}
+	mt, _ := util.SSHExec(c, fmt.Sprintf("stat -c %%Y %q 2> /dev/null", binPath), true)
+	if mt >= fmt.Sprintf("%d", fi.ModTime().Unix()) {
+		return nil
+	}
+	if err := util.SCP(c, exe, binPath); err != nil {
+		return err
+	}
+	_, err = util.SSHExec(c, fmt.Sprintf(`
+      mkdir -p /usr/local/lib/systemd/system-generators/
+      ln -sf %q /usr/local/lib/systemd/system-generators/k-generator`, binPath), true)
 	return err
 }
 
@@ -56,67 +56,32 @@ func getBuildVersion() string {
 	return fmt.Sprintf("%s%s", revision, dirty)
 }
 
-func loadConfig() (*config.C, string, error) {
-	dir := filepath.Join(root, configDir)
-	if v := os.Getenv("K_DIR"); v != "" {
-		dir = v
-	}
-	dir, err := filepath.EvalSymlinks(dir)
+func loadConfig() (*config.C, error) {
+	v, err := util.OpenVault(root.VaultKeyFile(), root.IsClient())
 	if err != nil {
-		return nil, "", fmt.Errorf("config: %w", err)
+		return nil, err
 	}
-	v := util.Vault(nil)
-	c, err := config.Load(dir, template.FuncMap{
-		"decrypt": func(s string) (string, error) {
-			if err := error(nil); v == nil {
-				v, err = util.OpenVault(filepath.Join(root, ".key"), root == clientRoot)
-				if err != nil {
-					return "", err
-				}
-			}
-			return v.Decrypt(s)
-		},
-	})
+	c, err := config.Load(root.ConfigDir(), template.FuncMap{"decrypt": v.Decrypt})
 	if err != nil {
-		return nil, "", fmt.Errorf("config: %w", err)
+		return nil, err
 	}
 	if os.Getenv("DEV") != "" {
 		c.User, c.Host = "root", "localhost"
 	}
-	return c, dir, nil
+	return c, nil
 }
 
-func gitPush(c *config.C, dir, remote string) error {
-	if err := assertGitClean(dir); err != nil {
-		return err
-	}
-	log.Printf("Pushing %s:", filepath.Base(dir))
-	url := fmt.Sprintf("ssh://%s@%s:/receive/%s", c.User, c.Host, filepath.Join(serverRoot, remote))
-	// push to non-existant remote to ensure git hooks run even when nothing changed
-	_, err := util.Exec(`cd $dir && git push "$url" --receive-pack="$exe" master:$(date +%s) --force`,
-		map[string]string{"dir": dir, "url": url, "exe": serverBin}, false)
-	return err
-}
-
-func assertGitClean(dir string) error {
-	if fs, err := os.Stat(filepath.Join(dir, ".git")); err != nil || !fs.IsDir() {
-		return fmt.Errorf("%s is not a git repository", filepath.Base(dir))
-	} else if out, err := util.Exec(`[[ -z $(cd $dir && git status --porcelain) ]] && echo clean`,
-		map[string]string{"dir": dir}, true); err != nil || out != "clean" {
-		return fmt.Errorf("%s has uncommitted changes", filepath.Base(dir))
-	}
-	return nil
-}
-
-func getAppName() (string, error) {
-	if cDir, err := filepath.EvalSymlinks(filepath.Join(root, configDir)); err != nil {
-		return "", err
+func getAppName(c *config.C, name string) (string, error) {
+	if name != "" && c.Apps[name] == nil && name != filepath.Base(c.Dir) {
+		return "", fmt.Errorf("unknown app %q", name)
+	} else if name != "" {
+		return name, nil
 	} else if aDir, err := os.Getwd(); err != nil {
 		return "", err
-	} else if aRelDir, err := filepath.Rel(filepath.Dir(cDir), aDir); err != nil {
+	} else if aRelDir, err := filepath.Rel(filepath.Dir(c.Dir), aDir); err != nil {
 		return "", err
 	} else {
-		return strings.Split(aRelDir, string(os.PathSeparator))[0], nil
+		return filepath.Base(aRelDir), nil
 	}
 }
 
@@ -140,4 +105,94 @@ func sendTelegramMessage(botId, token, chatId, text string) error {
 		return fmt.Errorf("error sending message: %s", string(bs))
 	}
 	return nil
+}
+
+func sync(sc *ssh.Client, srcDir, dstDir string) (int, error) {
+	s, err := sc.NewSession()
+	if err != nil {
+		return 0, err
+	}
+	defer s.Close()
+	r, err := s.StderrPipe()
+	if err != nil {
+		return 0, err
+	}
+	go func() { io.Copy(os.Stderr, r) }()
+	rw, err := s.StdinPipe()
+	if err != nil {
+		return 0, err
+	}
+	rr, err := s.StdoutPipe()
+	if err != nil {
+		return 0, err
+	}
+	g, n, cancel := errgroup.Group{}, 0, func() { s.Close() }
+	g.Go(func() (err error) {
+		defer cancel()
+		n, err = util.NewPipe(rr, rw).Send(srcDir, dstDir)
+		return err
+	})
+	g.Go(func() (err error) {
+		defer cancel()
+		return s.Run(fmt.Sprintf("%s receive", serverBin))
+	})
+	return n, g.Wait()
+}
+
+func completeApps(args []string) []string {
+	completions := []string{}
+	c, err := loadConfig()
+	if err != nil {
+		return nil
+	}
+	for name := range c.Apps {
+		completions = append(completions, name)
+	}
+	return completions
+}
+
+func renderConfig(c *config.C, dir string) error {
+	if err := os.RemoveAll(dir); err != nil {
+		return err
+	} else if err := os.Mkdir(dir, 0755); err != nil {
+		return err
+	}
+	return c.Render(dir, serverBin)
+}
+
+func syncConfig(sc *ssh.Client, c *config.C) error {
+	dir := filepath.Join(string(root), "tmp")
+	defer func() { os.RemoveAll(dir) }()
+	if err := renderConfig(c, dir); err != nil {
+		return err
+	} else if n, err := sync(sc, dir, serverRoot.ConfigDir()); err != nil {
+		return err
+	} else if n != 0 {
+		cmd := `set -x; systemctl daemon-reload && systemctl restart k-http.target`
+		_, err := util.SSHExec(sc, cmd, false)
+		return err
+	}
+	return nil
+}
+
+func deployApp(sc *ssh.Client, c *config.C, name string) error {
+	a, aDir := c.Apps[name], filepath.Join(c.Dir, "..", name)
+	if a.Deploy != nil {
+		return fmt.Errorf("TODO: reimplement a.Deploy")
+	}
+	for _, name := range a.Dependencies {
+		if err := deployApp(sc, c, name); err != nil {
+			return err
+		}
+	}
+	if _, err := sync(sc, aDir, filepath.Join(string(serverRoot), name)); err != nil {
+		return err
+	}
+	cmd := fmt.Sprintf("cd %q; set -x;\n", filepath.Join(string(serverRoot), name))
+	if a.Build != nil {
+		cmd += *a.Build + "\n"
+	}
+	cmd += fmt.Sprintf(`systemctl restart %s.target`, name)
+	_, err := util.SSHExec(sc, cmd, false)
+	return err
 }
