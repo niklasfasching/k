@@ -28,6 +28,7 @@ type Route struct {
 	Target    string
 	BasicAuth BasicAuth
 	LogFormat string
+	Headers   map[string]string
 	LogFields map[string]string
 	ErrPaths  map[int]string
 }
@@ -132,6 +133,9 @@ func (r *Route) Handler() (http.Handler, error) {
 	}
 	if err != nil {
 		return nil, err
+	}
+	if r.Headers != nil {
+		h = HeaderHandler(h, r.Headers)
 	}
 	h, err = LogHandler(h, r.LogFormat, r.LogFields, r.ErrPaths)
 	if err != nil {

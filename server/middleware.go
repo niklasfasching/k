@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"crypto/subtle"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -47,7 +48,7 @@ func LogHandler(next http.Handler, format string,
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		rw, timestamp := &responseWriter{ResponseWriter: w, req: r}, time.Now()
 		next.ServeHTTP(rw, r)
-		util.JournalLog(fmt(map[string]interface{}{
+		err := util.JournalLog(fmt(map[string]interface{}{
 			"remote":    maskIP(r.RemoteAddr),
 			"userAgent": r.UserAgent(),
 			"timestamp": timestamp.Format(time.RFC3339),
@@ -58,6 +59,9 @@ func LogHandler(next http.Handler, format string,
 			"status":    rw.status,
 			"size":      rw.count,
 		}), "6", fields)
+		if err != nil {
+			log.Printf("journal log failed: %s", err)
+		}
 	}), nil
 }
 
@@ -72,6 +76,15 @@ func ProxyHandler(uri string) (http.Handler, error) {
 		return nil, err
 	}
 	return httputil.NewSingleHostReverseProxy(u), nil
+}
+
+func HeaderHandler(next http.Handler, headers map[string]string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		for k, v := range headers {
+			w.Header().Set(k, v)
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func (ba *BasicAuth) Handler(next http.Handler) http.Handler {
